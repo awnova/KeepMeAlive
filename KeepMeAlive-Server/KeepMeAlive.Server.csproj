@@ -1,26 +1,61 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <AssemblyName>KeepMeAlive.Server</AssemblyName>
-    <RootNamespace>KeepMeAlive.Server</RootNamespace>
-  </PropertyGroup>
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<AssemblyName>KeepMeAlive</AssemblyName>
+		<RootNamespace>KeepMeAlive.Server</RootNamespace>
 
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="SPTarkov.Common" Version="4.0.13" />
-    <PackageReference Include="SPTarkov.DI" Version="4.0.13" />
-    <PackageReference Include="SPTarkov.Reflection" Version="4.0.13" />
-    <PackageReference Include="SPTarkov.Server.Core" Version="4.0.13" />
-    <PackageReference Include="SPTarkov.Server.Web" Version="4.0.13" />
-    <PackageReference Include="SemanticVersioning" Version="3.0.0" />
-  </ItemGroup>
+		<ZipRootDir>compiled</ZipRootDir>
+		<ZipModPath>SPT\user\mods\KeepMeAlive</ZipModPath>
+		<ZipStagingDir>$(BaseIntermediateOutputPath)zip\</ZipStagingDir>
+		<ZipFile>$(ZipRootDir)\KeepMeAlive.zip</ZipFile>
 
-  <ItemGroup>
-    <None Include="mod.manifest.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+	</PropertyGroup>
+
+	<Target Name="BuildAndZip" AfterTargets="Build">
+
+		<!-- Ensure output directories exist -->
+		<MakeDir Directories="$(ZipRootDir)" />
+		<RemoveDir Directories="$(ZipStagingDir)" />
+		<MakeDir Directories="$(ZipStagingDir)\$(ZipModPath)\config" />
+
+		<!-- Copy DLL -->
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ZipStagingDir)\$(ZipModPath)" />
+
+		<!-- Copy manifest -->
+		<Copy SourceFiles="mod.manifest.json" DestinationFolder="$(ZipStagingDir)\$(ZipModPath)" />
+
+		<!-- Copy config.json -->
+		<Copy SourceFiles="config\config.json" DestinationFolder="$(ZipStagingDir)\$(ZipModPath)\config" />
+
+		<!-- Create ZIP -->
+		<ZipDirectory SourceDirectory="$(ZipStagingDir)" DestinationFile="$(ZipFile)" Overwrite="true" />
+
+		<!-- Cleanup -->
+		<RemoveDir Directories="$(ZipStagingDir)" />
+
+	</Target>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+		<PackageReference Include="SPTarkov.Common" Version="4.0.12" />
+		<PackageReference Include="SPTarkov.DI" Version="4.0.12" />
+		<PackageReference Include="SPTarkov.Reflection" Version="4.0.12" />
+		<PackageReference Include="SPTarkov.Server.Core" Version="4.0.12" />
+		<PackageReference Include="SPTarkov.Server.Web" Version="4.0.12" />
+		<PackageReference Include="SemanticVersioning" Version="3.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="mod.manifest.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Include="config\config.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 </Project>

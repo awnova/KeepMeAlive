@@ -9,10 +9,54 @@
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <CoreRefDir>$(MSBuildThisFileDirectory)..\Build\Lib\Fika-Headless-1.4.13\Fika-Headless-1.4.13\References\</CoreRefDir>
+    <CoreRefDir>$(MSBuildThisFileDirectory)..\Build\Lib\Fika-Headless-1.4.11\References\</CoreRefDir>
     <BepInExCoreDir>$(MSBuildThisFileDirectory)..\Build\Lib\spt-4.0.12\static-assets-csharp\BepInEx\core\</BepInExCoreDir>
     <DecompLibDir>$(MSBuildThisFileDirectory)..\Build\Decomp\Assembly-CSharp\lib\</DecompLibDir>
+
+	  <!-- Output ZIP folder -->
+	  <ZipRootDir>compiled</ZipRootDir>
+
+	  <!-- Change this line to modify internal ZIP structure -->
+	  <!-- Example: SPT\user\mods OR BepInEx/plugins -->
+	  <ZipModPath>BepInEx\plugins</ZipModPath>
+
+	  <!-- Temp staging directory -->
+	  <ZipStagingDir>$(BaseIntermediateOutputPath)zip\</ZipStagingDir>
+
+	  <!-- Final ZIP file -->
+	  <ZipFile>$(ZipRootDir)\$(MSBuildProjectName).zip</ZipFile>
+
+	   <!--
+	  <TarkovDir Condition=" '$(TarkovDir)' == '' ">C:/Users/Haze_of_dream/AppData/Roaming/SPT 4</TarkovDir>
+	  -->
+
+	  <ModOutputDir>$(TarkovDir)\BepInEx\plugins</ModOutputDir>
+
+	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	  <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
   </PropertyGroup>
+
+    <Target Name="BuildAndZip" AfterTargets="Build">
+
+	    <!-- Ensure output directories exist -->
+	    <MakeDir Directories="$(ZipRootDir)" />
+	    <RemoveDir Directories="$(ZipStagingDir)" />
+	    <MakeDir Directories="$(ZipStagingDir)\$(ZipModPath)" />
+
+	    <!-- Copy DLL into staging structure -->
+	    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ZipStagingDir)\$(ZipModPath)" />
+
+	    <!-- Optional: also deploy to live SPT folder -->
+	    <MakeDir Directories="$(ModOutputDir)" />
+	    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModOutputDir)" />
+
+	    <!-- Create ZIP -->
+	    <ZipDirectory SourceDirectory="$(ZipStagingDir)" DestinationFile="$(ZipFile)" Overwrite="true" />
+
+	    <!-- Cleanup -->
+	    <RemoveDir Directories="$(ZipStagingDir)" />
+
+    </Target>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\revive_item_cooldown.png" />
@@ -21,41 +65,113 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="0Harmony" HintPath="$(BepInExCoreDir)0Harmony.dll" Private="false" />
-    <Reference Include="BepInEx" HintPath="$(BepInExCoreDir)BepInEx.dll" Private="false" />
-    <Reference Include="AnimationSystem.Types" HintPath="$(CoreRefDir)AnimationSystem.Types.dll" Private="false" />
-    <Reference Include="Assembly-CSharp" HintPath="$(CoreRefDir)hollowed.dll" Private="false" />
-    <Reference Include="bsg.componentace.compression.libs.zlib" HintPath="$(CoreRefDir)bsg.componentace.compression.libs.zlib.dll" Private="false" />
-    <Reference Include="bsg.console.core" HintPath="$(CoreRefDir)bsg.console.core.dll" Private="false" />
-    <Reference Include="BSG.Unity.Wires" HintPath="$(CoreRefDir)BSG.Unity.Wires.dll" Private="false" />
-    <Reference Include="Comfort" HintPath="$(CoreRefDir)Comfort.dll" Private="false" />
-    <Reference Include="Comfort.Unity" HintPath="$(CoreRefDir)Comfort.Unity.dll" Private="false" />
-    <Reference Include="CommonExtensions" HintPath="$(CoreRefDir)CommonExtensions.dll" Private="false" />
-    <Reference Include="DissonanceVoip" HintPath="$(CoreRefDir)DissonanceVoip.dll" Private="false" />
-    <Reference Include="Fika.Core" HintPath="$(CoreRefDir)Fika.Core.dll" Private="false" />
-    <Reference Include="ItemComponent.Types" HintPath="$(CoreRefDir)ItemComponent.Types.dll" Private="false" />
-    <Reference Include="ItemTemplate.Types" HintPath="$(DecompLibDir)ItemTemplate.Types.dll" Private="false" />
-    <Reference Include="Newtonsoft.Json" HintPath="$(CoreRefDir)Newtonsoft.Json.dll" Private="false" />
-    <Reference Include="Sirenix.Serialization" HintPath="$(CoreRefDir)Sirenix.Serialization.dll" Private="false" />
-    <Reference Include="spt-common" HintPath="$(CoreRefDir)spt-common.dll" Private="false" />
-    <Reference Include="spt-core" HintPath="$(CoreRefDir)spt-core.dll" Private="false" />
-    <Reference Include="spt-custom" HintPath="$(CoreRefDir)spt-custom.dll" Private="false" />
-    <Reference Include="spt-debugging" HintPath="$(CoreRefDir)spt-debugging.dll" Private="false" />
-    <Reference Include="spt-reflection" HintPath="$(CoreRefDir)spt-reflection.dll" Private="false" />
-    <Reference Include="spt-singleplayer" HintPath="$(CoreRefDir)spt-singleplayer.dll" Private="false" />
-    <Reference Include="Unity.Postprocessing.Runtime" HintPath="$(CoreRefDir)Unity.Postprocessing.Runtime.dll" Private="false" />
-    <Reference Include="Unity.TextMeshPro" HintPath="$(CoreRefDir)Unity.TextMeshPro.dll" Private="false" />
-    <Reference Include="UnityEngine" HintPath="$(CoreRefDir)UnityEngine.dll" Private="false" />
-    <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(DecompLibDir)UnityEngine.AssetBundleModule.dll" Private="false" />
-    <Reference Include="UnityEngine.CoreModule" HintPath="$(DecompLibDir)UnityEngine.CoreModule.dll" Private="false" />
-    <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(DecompLibDir)UnityEngine.ImageConversionModule.dll" Private="false" />
-    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(DecompLibDir)UnityEngine.IMGUIModule.dll" Private="false" />
-    <Reference Include="UnityEngine.UIModule" HintPath="$(DecompLibDir)UnityEngine.UIModule.dll" Private="false" />
-    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(DecompLibDir)UnityEngine.InputLegacyModule.dll" Private="false" />
-    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(DecompLibDir)UnityEngine.PhysicsModule.dll" Private="false" />
-    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(DecompLibDir)UnityEngine.TextRenderingModule.dll" Private="false" />
-    <Reference Include="UnityEngine.UI" HintPath="$(CoreRefDir)UnityEngine.UI.dll" Private="false" />
-    <Reference Include="websocket-sharp" HintPath="$(CoreRefDir)websocket-sharp.dll" Private="false" />
+    <Reference Include="0Harmony">
+      <HintPath>..\..\..\SPT 4\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="AnimationSystem.Types">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\AnimationSystem.Types.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\..\SPT 4\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="bsg.componentace.compression.libs.zlib">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\bsg.componentace.compression.libs.zlib.dll</HintPath>
+    </Reference>
+    <Reference Include="bsg.console.core">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\bsg.console.core.dll</HintPath>
+    </Reference>
+    <Reference Include="BSG.Unity.Wires">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\BSG.Unity.Wires.dll</HintPath>
+    </Reference>
+    <Reference Include="Comfort">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+    </Reference>
+    <Reference Include="Comfort.Unity">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Comfort.Unity.dll</HintPath>
+    </Reference>
+    <Reference Include="CommonExtensions">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\CommonExtensions.dll</HintPath>
+    </Reference>
+    <Reference Include="DissonanceVoip">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\DissonanceVoip.dll</HintPath>
+    </Reference>
+    <Reference Include="Fika.Core">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\Fika\Fika.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="ItemComponent.Types">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\ItemComponent.Types.dll</HintPath>
+    </Reference>
+    <Reference Include="ItemTemplate.Types">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\ItemTemplate.Types.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Sirenix.Serialization.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-common">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-common.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-core">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-core.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-custom">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-custom.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-debugging">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-debugging.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-reflection">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
+    </Reference>
+    <Reference Include="spt-singleplayer">
+      <HintPath>..\..\..\SPT 4\BepInEx\plugins\spt\spt-singleplayer.dll</HintPath>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>..\..\..\SPT 4\SPT\SPTarkov.Server.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.Postprocessing.Runtime">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Unity.Postprocessing.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.AssetBundleModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.PhysicsModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="websocket-sharp">
+      <HintPath>..\..\..\SPT 4\EscapeFromTarkov_Data\Managed\websocket-sharp.dll</HintPath>
+    </Reference>
   </ItemGroup>
-
 </Project>
