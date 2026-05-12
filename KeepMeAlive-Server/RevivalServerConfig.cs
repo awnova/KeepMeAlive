@@ -59,11 +59,14 @@ public sealed class RevivalItemConfig
 //====================[ TradingConfig ]====================
 public sealed class TradingConfig
 {
+
+    public bool EnableTraderOffer { get; set; } = false;
     public string Trader { get; set; } = "Therapist";
     public int AmountRoubles { get; set; } = 200000;
 
     public void Normalize()
     {
+        EnableTraderOffer = EnableTraderOffer;
         Trader = string.IsNullOrWhiteSpace(Trader) ? "Therapist" : Trader.Trim();
         AmountRoubles = Math.Max(1, AmountRoubles);
     }
