@@ -64,6 +64,12 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
             return;
         }
 
+        if (!configService.Config.RevivalItem.Trading.EnableTraderOffer)
+        {
+            logger.Info("[KeepMeAlive.Server] Trader offer injection disabled via config.");
+            return;
+        }
+
         // Remove previous entry (idempotent patching). SPT 4.0 uses PascalCase (Id, Tpl).
         var items = (System.Collections.IList)trader.Assort.Items;
         for (int i = items.Count - 1; i >= 0; i--)
