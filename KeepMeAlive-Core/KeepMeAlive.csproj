@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>KeepMeAlive</AssemblyName>
+    <RootNamespace>KeepMeAlive</RootNamespace>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <SPTBaseDir Condition=" '$(SPTBaseDir)' == '' ">C:\SPT</SPTBaseDir>
+    <ManagedDir>$(SPTBaseDir)\EscapeFromTarkov_Data\Managed\</ManagedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\heartbeat_loop.wav" />
+    <EmbeddedResource Include="Resources\revive_item_cooldown.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony" HintPath="$(SPTBaseDir)\BepInEx\core\0Harmony.dll" Private="false" />
+    <Reference Include="BepInEx" HintPath="$(SPTBaseDir)\BepInEx\core\BepInEx.dll" Private="false" />
+    <Reference Include="spt-common" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-common.dll" Private="false" />
+    <Reference Include="spt-core" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-core.dll" Private="false" />
+    <Reference Include="spt-custom" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-custom.dll" Private="false" />
+    <Reference Include="spt-debugging" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-debugging.dll" Private="false" />
+    <Reference Include="spt-reflection" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-reflection.dll" Private="false" />
+    <Reference Include="spt-singleplayer" HintPath="$(SPTBaseDir)\BepInEx\plugins\spt\spt-singleplayer.dll" Private="false" />
+    <Reference Include="Fika.Core" HintPath="$(SPTBaseDir)\BepInEx\plugins\Fika\Fika.Core.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)Assembly-CSharp.dll" Private="false" />
+    <Reference Include="Assembly-CSharp-firstpass" HintPath="$(ManagedDir)Assembly-CSharp-firstpass.dll" Private="false" />
+    <Reference Include="AnimationSystem.Types" HintPath="$(ManagedDir)AnimationSystem.Types.dll" Private="false" />
+    <Reference Include="BSG.Unity.Wires" HintPath="$(ManagedDir)BSG.Unity.Wires.dll" Private="false" />
+    <Reference Include="bsg.componentace.compression.libs.zlib" HintPath="$(ManagedDir)bsg.componentace.compression.libs.zlib.dll" Private="false" />
+    <Reference Include="bsg.console.core" HintPath="$(ManagedDir)bsg.console.core.dll" Private="false" />
+    <Reference Include="Comfort" HintPath="$(ManagedDir)Comfort.dll" Private="false" />
+    <Reference Include="Comfort.Unity" HintPath="$(ManagedDir)Comfort.Unity.dll" Private="false" />
+    <Reference Include="CommonExtensions" HintPath="$(ManagedDir)CommonExtensions.dll" Private="false" />
+    <Reference Include="DissonanceVoip" HintPath="$(ManagedDir)DissonanceVoip.dll" Private="false" />
+    <Reference Include="ItemComponent.Types" HintPath="$(ManagedDir)ItemComponent.Types.dll" Private="false" />
+    <Reference Include="ItemTemplate.Types" HintPath="$(ManagedDir)ItemTemplate.Types.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(ManagedDir)Newtonsoft.Json.dll" Private="false" />
+    <Reference Include="Sirenix.Serialization" HintPath="$(ManagedDir)Sirenix.Serialization.dll" Private="false" />
+    <Reference Include="Unity.Postprocessing.Runtime" HintPath="$(ManagedDir)Unity.Postprocessing.Runtime.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(ManagedDir)Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ManagedDir)UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(ManagedDir)UnityEngine.AssetBundleModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AudioModule" HintPath="$(ManagedDir)UnityEngine.AudioModule.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(ManagedDir)UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(ManagedDir)UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(ManagedDir)UnityEngine.InputLegacyModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(ManagedDir)UnityEngine.PhysicsModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(ManagedDir)UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(ManagedDir)UnityEngine.UI.dll" Private="false" />
+    <Reference Include="UnityEngine.UIModule" HintPath="$(ManagedDir)UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="websocket-sharp" HintPath="$(ManagedDir)websocket-sharp.dll" Private="false" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <BuildPluginDir>$(MSBuildProjectDirectory)\..\Build\KeepMeAlive\BepInEx\plugins</BuildPluginDir>
+    <RuntimePluginDir>$(SPTBaseDir)\BepInEx\plugins</RuntimePluginDir>
+  </PropertyGroup>
+
+  <Target Name="DeployPlugin" AfterTargets="Build">
+    <MakeDir Directories="$(BuildPluginDir)" />
+    <MakeDir Directories="$(RuntimePluginDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BuildPluginDir)" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(RuntimePluginDir)" SkipUnchangedFiles="false" />
+  </Target>
+</Project>

@@ -1,0 +1,21 @@
+# Build outputs
+KeepMeAlive-Core/bin/
+KeepMeAlive-Core/obj/
+KeepMeAlive-Server/bin/
+KeepMeAlive-Server/obj/
+KeepMeAlive-Server/build/
+KeepMeAlive-Server/node_modules/
+KeepMeAlive-Server/types/
+KeepMeAlive-Server/config.json
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+.idea/
+
+# Build configuration and scripts with local paths - DO NOT COMMIT
+build-config.json
+Build/

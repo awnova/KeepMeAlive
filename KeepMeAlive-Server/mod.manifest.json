@@ -1,0 +1,9 @@
+{
+  "modId": "KeepMeAlive",
+  "name": "KeepMeAlive Server",
+  "author": "awnova",
+  "version": "1.0.0",
+  "description": "Server-side authority and database hooks for KeepMeAlive.",
+  "sptVersion": ">=4.1.0",
+  "entryAssembly": "KeepMeAlive.Server.dll"
+}
