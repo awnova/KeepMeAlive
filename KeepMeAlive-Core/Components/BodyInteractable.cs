@@ -22,55 +22,50 @@ namespace KeepMeAlive.Components
         private static SyncedGameplayConfig Cfg => SyncedServerConfigStore.Config.Gameplay;
 
         //====================[ Nested Types ]====================
-        // Lightweight marker placed on each bone-parented collider child.
-        // The game's raycast hits the child and routes actions back to the owner.
-        public sealed class BodyInteractableProxy : InteractableObject
+        // Marker on each bone-parented collider child.
+        // BodyProxyFindInteractablePatch routes raycast hits on it to the owner.
+        public sealed class BodyInteractableProxy : MonoBehaviour
         {
             public BodyInteractable Owner;
         }
 
         //====================[ Fields ]====================
         public Player Revivee { get; set; }
-        public bool HasActivePicker { get; set; }
+        public bool HasActivePicker => _activeMedPicker != null;
+
+        // What a proxy hit resolves to: the open med picker, otherwise this body.
+        public GameObject InteractionTarget => _activeMedPicker != null ? _activeMedPicker.gameObject : gameObject;
         
         private readonly List<Collider> _colliders = new List<Collider>();
         // Proxy GameObjects live under the revivee's bone transforms, not under this object,
         // so they must be destroyed explicitly.
         private readonly List<GameObject> _proxyObjects = new List<GameObject>();
-        private readonly List<BodyInteractableProxy> _proxies = new List<BodyInteractableProxy>();
+        private bool _collidersEnabled;
         private MedPickerInteractable _activeMedPicker;
         private bool _isLootScreenOpen;
         private GamePlayerOwner _lootOwner;
 
+        // Track action changes to avoid resetting the selection.
+        private GamePlayerOwner _viewerOwner;
+        private int _shownSignature;
+        private float _nextSignaturePoll;
+        private const float SignaturePollInterval = 0.25f;
+
         public static float ReviveHoldTime => RevivePolicy.GetHoldDuration(ReviveSource.Team);
 
-        //====================[ Bone Collider Whitelist ]====================
-        private static readonly HashSet<EBodyPartColliderType> ColliderWhitelist = new HashSet<EBodyPartColliderType>
+        //====================[ Bone Collider Filter ]====================
+        // Covered by HeadCommon, so not mirrored.
+        private static readonly HashSet<EBodyPartColliderType> HeadSubParts = new HashSet<EBodyPartColliderType>
         {
-            // Chest
-            EBodyPartColliderType.RibcageUp,
-            EBodyPartColliderType.RibcageLow,
-            EBodyPartColliderType.RightSideChestUp,
-            EBodyPartColliderType.LeftSideChestUp,
-            EBodyPartColliderType.RightSideChestDown,
-            EBodyPartColliderType.LeftSideChestDown,
-            EBodyPartColliderType.SpineTop,
-            EBodyPartColliderType.NeckFront,
-            EBodyPartColliderType.NeckBack,
-            // Stomach
-            EBodyPartColliderType.Pelvis,
-            EBodyPartColliderType.PelvisBack,
-            EBodyPartColliderType.SpineDown,
-            // Upper Arms
-            EBodyPartColliderType.LeftUpperArm,
-            EBodyPartColliderType.RightUpperArm,
-            // Upper Legs
-            EBodyPartColliderType.LeftThigh,
-            EBodyPartColliderType.RightThigh,
+            EBodyPartColliderType.ParietalHead,
+            EBodyPartColliderType.BackHead,
+            EBodyPartColliderType.Ears,
+            EBodyPartColliderType.Eyes,
+            EBodyPartColliderType.Jaw,
         };
 
-        // Slightly expand mirrored colliders to bias interaction raycasts toward body hitboxes.
-        private const float MirroredColliderInflation = 1.08f;
+        // Fixed world-space padding keeps thin hitboxes easy to select.
+        private const float MirroredColliderPadding = 0.05f;
 
         //====================[ Unity Lifecycle ]====================
         private void Awake()
@@ -90,8 +85,8 @@ namespace KeepMeAlive.Components
                 return;
             }
 
-            // Disable bone colliders when an overlay (picker / loot screen) is active
-            if (HasActivePicker || _isLootScreenOpen)
+            // Disable bone colliders while the loot screen is open.
+            if (_isLootScreenOpen)
             {
                 SetCollidersEnabled(false);
                 return;
@@ -99,15 +94,33 @@ namespace KeepMeAlive.Components
 
             SetCollidersEnabled(true);
 
-            // Advance StateUpdateTime so the interaction wheel refreshes as eligibility changes.
-            BumpProxyStateUpdateTime();
+            // While the picker is open, proxy hits resolve to it and it refreshes its own list.
+            if (!HasActivePicker) RefreshListIfActionsChanged();
         }
 
-        private void BumpProxyStateUpdateTime()
+        // Refresh the list when its actions change.
+        private void RefreshListIfActionsChanged()
         {
-            for (int i = 0; i < _proxies.Count; i++)
+            if (_viewerOwner == null || Time.time < _nextSignaturePoll) return;
+            _nextSignaturePoll = Time.time + SignaturePollInterval;
+
+            var viewer = _viewerOwner.Player;
+            if (viewer == null || !ReferenceEquals(viewer.InteractableObject, this)) return;
+
+            if (Signature(BuildActions(_viewerOwner)) != _shownSignature) SetStateUpdateTime();
+        }
+
+        internal static int Signature(AvailableInteractionState state)
+        {
+            unchecked
             {
-                if (_proxies[i] != null) _proxies[i].SetStateUpdateTime();
+                int hash = 17;
+                foreach (var action in state.Actions)
+                {
+                    hash = hash * 31 + (action.Name?.GetHashCode() ?? 0);
+                    hash = hash * 31 + (action.Disabled ? 1 : 0);
+                }
+                return hash * 31 + state.Actions.Count;
             }
         }
 
@@ -142,6 +155,9 @@ namespace KeepMeAlive.Components
             // Confirm the player type and owner before attaching the interactable.
             if (player.IsYourPlayer || player.IsAI || player.AIData?.IsAI == true) yield break;
 
+            // Another attach may have finished during the wait.
+            if (player.gameObject.GetComponentInChildren<BodyInteractable>() != null) yield break;
+
             // Root GO holds the BodyInteractable component and serves as MedPicker anchor
             var go = new GameObject("Body Interactable");
             go.transform.SetParent(player.gameObject.transform, false);
@@ -154,11 +170,25 @@ namespace KeepMeAlive.Components
 
             int interactiveLayer = LayerMask.NameToLayer("Interactive");
 
-            // Clone chest+stomach hitbox colliders onto bone transforms
-            foreach (BodyPartCollider bpc in player.PlayerBones.BodyPartColliders)
+            var bodyParts = player.PlayerBones.BodyPartColliders;
+            bool hasHeadCommon = false;
+            foreach (BodyPartCollider bpc in bodyParts)
+            {
+                if (bpc != null && bpc.Collider != null && bpc.BodyPartColliderType == EBodyPartColliderType.HeadCommon)
+                {
+                    hasHeadCommon = true;
+                    break;
+                }
+            }
+
+            // Clone body hitboxes onto their bone transforms (excluding armor plates).
+            var mirrored = new HashSet<Collider>();
+            foreach (BodyPartCollider bpc in bodyParts)
             {
                 if (bpc == null || bpc.Collider == null) continue;
-                if (!ColliderWhitelist.Contains(bpc.BodyPartColliderType)) continue;
+                if (bpc is ArmorPlateCollider) continue;
+                if (hasHeadCommon && HeadSubParts.Contains(bpc.BodyPartColliderType)) continue;
+                if (!mirrored.Add(bpc.Collider)) continue;
 
                 var childGo = new GameObject($"BI_{bpc.BodyPartColliderType}");
                 childGo.transform.SetParent(bpc.Collider.transform, false);
@@ -176,7 +206,6 @@ namespace KeepMeAlive.Components
 
                 bi._colliders.Add(cloned);
                 bi._proxyObjects.Add(childGo);
-                bi._proxies.Add(proxy);
             }
 
             Features.BodyInteractableRuntime.Register(player.ProfileId, bi);
@@ -188,38 +217,55 @@ namespace KeepMeAlive.Components
         //====================[ Collider Helpers ]====================
         private static Collider CloneColliderShape(Collider source, GameObject target)
         {
+            // Padding is in world metres; convert to the bone's local space.
+            Vector3 scale = source.transform.lossyScale;
+            float sx = Mathf.Max(Mathf.Abs(scale.x), 0.0001f);
+            float sy = Mathf.Max(Mathf.Abs(scale.y), 0.0001f);
+            float sz = Mathf.Max(Mathf.Abs(scale.z), 0.0001f);
+            float maxScale = Mathf.Max(sx, Mathf.Max(sy, sz));
+            float pad = MirroredColliderPadding;
+
             if (source is BoxCollider box)
             {
                 var clone = target.AddComponent<BoxCollider>();
                 clone.center = box.center;
-                clone.size = box.size * MirroredColliderInflation;
+                clone.size = box.size + new Vector3(2f * pad / sx, 2f * pad / sy, 2f * pad / sz);
                 return clone;
             }
             if (source is SphereCollider sphere)
             {
                 var clone = target.AddComponent<SphereCollider>();
                 clone.center = sphere.center;
-                clone.radius = sphere.radius * MirroredColliderInflation;
+                clone.radius = sphere.radius + pad / maxScale;
                 return clone;
             }
             if (source is CapsuleCollider capsule)
             {
                 var clone = target.AddComponent<CapsuleCollider>();
                 clone.center = capsule.center;
-                clone.radius = capsule.radius * MirroredColliderInflation;
-                clone.height = capsule.height * MirroredColliderInflation;
+                // Capsule radius uses the larger cross-axis scale.
+                float axisScale = capsule.direction == 0 ? sx : capsule.direction == 1 ? sy : sz;
+                float radialScale = capsule.direction == 0 ? Mathf.Max(sy, sz)
+                                  : capsule.direction == 1 ? Mathf.Max(sx, sz)
+                                  : Mathf.Max(sx, sy);
+                clone.radius = capsule.radius + pad / radialScale;
+                clone.height = capsule.height + 2f * pad / axisScale;
                 clone.direction = capsule.direction;
                 return clone;
             }
             return null;
         }
 
+        // Skips the collider pass when the state is unchanged.
         private void SetCollidersEnabled(bool enabled)
         {
+            if (_collidersEnabled == enabled) return;
+            _collidersEnabled = enabled;
+
             for (int i = _colliders.Count - 1; i >= 0; i--)
             {
                 if (_colliders[i] == null) { _colliders.RemoveAt(i); continue; }
-                if (_colliders[i].enabled != enabled) _colliders[i].enabled = enabled;
+                _colliders[i].enabled = enabled;
             }
         }
 
@@ -234,6 +280,10 @@ namespace KeepMeAlive.Components
                 VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.TeamReviveDisabled);
                 return;
             }
+
+            // A hold is already running. PlantPlayerState.Plant just exits the plant without firing
+            // the running hold's callback, so a second press would kill it with no cancel sent.
+            if (owner.Player.CurrentManagedState is PlantPlayerState) return;
 
             if (owner.Player.CurrentState is not IdlePlayerState)
             {
@@ -254,7 +304,17 @@ namespace KeepMeAlive.Components
             FikaBridge.SendTeamHelpPacket(Revivee.ProfileId, owner.Player.ProfileId);
         }
 
+        // Called on each list build; records what the list shows.
         public AvailableInteractionState GetActions(GamePlayerOwner owner)
+        {
+            var actions = BuildActions(owner);
+            _viewerOwner = owner;
+            _shownSignature = Signature(actions);
+            _nextSignaturePoll = Time.time + SignaturePollInterval;
+            return actions;
+        }
+
+        private AvailableInteractionState BuildActions(GamePlayerOwner owner)
         {
             var actions = new AvailableInteractionState();
 
@@ -383,7 +443,6 @@ namespace KeepMeAlive.Components
                 if (_proxyObjects[i] != null) Destroy(_proxyObjects[i]);
             }
             _proxyObjects.Clear();
-            _proxies.Clear();
             _colliders.Clear();
 
             if (Revivee != null)
@@ -397,59 +456,28 @@ namespace KeepMeAlive.Components
 
         public void OpenFilteredMedPicker(GamePlayerOwner owner, MedCategory category)
         {
-            try
-            {
-                if (Revivee == null || RMSession.IsPlayerCritical(Revivee.ProfileId)) return;
+            if (Revivee == null || owner?.Player == null || RMSession.IsPlayerCritical(Revivee.ProfileId)) return;
 
-                HasActivePicker = true;
-                SetCollidersEnabled(false);
+            ForceClosePicker();
 
-                // Spawn MedPicker with same bounds as the full body collider
-                var pickerGo = InteractableBuilder<MedPickerInteractable>.Build(
-                    PlayerFacingMessages.Interaction.MedPickerName,
-                    Vector3.zero, 
-                    new Vector3(0.8f, 1.8f, 0.8f),
-                    transform,
-                    null,
-                    false
-                );
-
-                var picker = pickerGo?.GetComponent<MedPickerInteractable>();
-                if (picker == null)
-                {
-                    Plugin.LogSource.LogError("[BodyInteractable] OpenFilteredMedPicker: picker missing");
-                    RestoreFromPicker();
-                    return;
-                }
-
-                picker.Init(owner.Player, Revivee, this, category);
-                _activeMedPicker = picker;
-                pickerGo.layer = LayerMask.NameToLayer("Interactive");
-                
-                // Allow it to exist now
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[BodyInteractable] OpenFilteredMedPicker error: {ex.Message}");
-                RestoreFromPicker();
-            }
+            // No collider: proxy hits on the body route to the picker (see InteractionTarget).
+            var pickerGo = new GameObject(PlayerFacingMessages.Interaction.MedPickerName);
+            pickerGo.transform.SetParent(transform, false);
+            var picker = pickerGo.AddComponent<MedPickerInteractable>();
+            picker.Init(owner.Player, Revivee, this, category);
+            _activeMedPicker = picker;
         }
 
-        public void RestoreFromPicker()
+        // Only the picker currently open may clear it; a stale picker's late close must not.
+        public void RestoreFromPicker(MedPickerInteractable picker)
         {
-            _activeMedPicker = null;
-            HasActivePicker = false;
-            // The Update loop will re-enable our collider on its next tick if conditions are met.
+            if (ReferenceEquals(_activeMedPicker, picker)) _activeMedPicker = null;
         }
 
         public void ForceClosePicker()
         {
-            if (_activeMedPicker != null)
-            {
-                try { UnityEngine.Object.Destroy(_activeMedPicker.gameObject); } catch { }
-                _activeMedPicker = null;
-            }
-            HasActivePicker = false;
+            if (_activeMedPicker != null) Destroy(_activeMedPicker.gameObject);
+            _activeMedPicker = null;
         }
 
         private static string CategoryLabel(MedCategory cat)

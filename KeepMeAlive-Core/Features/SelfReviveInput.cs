@@ -18,39 +18,37 @@ namespace KeepMeAlive.Features
             if (st.State != RMState.BleedingOut) return;
             if (!string.IsNullOrEmpty(st.CurrentReviverId) && st.CurrentReviverId != player.ProfileId) return;
 
+            // Hold completed and the server is authorizing: the attempt is committed. A new KeyDown
+            // here would start a second attempt and abandon this one (after its item was consumed).
+            if (st.SelfReviveAwaitingAuth) return;
+
             KeyCode key = KeepMeAliveSettings.SELF_REVIVAL_KEY.Value;
             float holdDuration = RevivePolicy.GetHoldDuration(ReviveSource.Self);
 
             if (Input.GetKeyDown(key))
             {
                 BeginHold(player, st, key, holdDuration);
+                return;
             }
-            else if (Input.GetKey(key) && st.IsSelfReviving)
-            {
-                if (st.SelfReviveAwaitingAuth) return;
 
-                st.SelfReviveHoldTime += Time.deltaTime;
-                if (st.SelfReviveHoldTime >= holdDuration)
-                {
-                    st.SelfReviveAwaitingAuth = true;
-                    RevivalController.Trace("SelfHold_Completed", player, st, "| threshold reached; begin auth");
-                    RevivalController.BeginSelfReviveStart(player, st);
-                }
+            if (!st.IsSelfReviving) return;
+
+            // Poll the held state rather than waiting for KeyUp: a sub-frame tap or a focus loss
+            // never delivers a usable KeyUp, and a hold left open blocks bleed-out and give-up.
+            if (!Input.GetKey(key))
+            {
+                RevivalController.Trace("SelfHold_ReleasedCanceled", player, st, $"| key={key}");
+                st.ClearSelfReviveInput();
+                DownedStateController.CancelReviveState(player, st, PlayerFacingMessages.Revive.SelfReviveCanceled, Color.yellow);
+                return;
             }
-            else if (Input.GetKeyUp(key) && st.IsSelfReviving)
-            {
-                if (st.SelfReviveAwaitingAuth)
-                {
-                    RevivalController.Trace("SelfHold_KeyUpIgnoredAfterCommit", player, st, $"| key={key}");
-                    return;
-                }
 
-                if (st.SelfReviveHoldTime > 0f)
-                {
-                    RevivalController.Trace("SelfHold_KeyUpCanceled", player, st, $"| key={key}");
-                    st.ClearSelfReviveInput();
-                    DownedStateController.CancelReviveState(player, st, PlayerFacingMessages.Revive.SelfReviveCanceled, Color.yellow);
-                }
+            st.SelfReviveHoldTime += Time.deltaTime;
+            if (st.SelfReviveHoldTime >= holdDuration)
+            {
+                st.SelfReviveAwaitingAuth = true;
+                RevivalController.Trace("SelfHold_Completed", player, st, "| threshold reached; begin auth");
+                RevivalController.BeginSelfReviveStart(player, st);
             }
         }
 

@@ -38,6 +38,10 @@ namespace KeepMeAlive.Patches
                 DownedStateController.TickResync(__instance);
                 if (KeepMeAliveSettings.DEBUG_KEYBINDS.Value) CheckTestKeybinds(__instance);
                 DownedStateController.TickDowned(__instance);
+
+                // Re-read: TickDowned and the timers above may have changed the state this frame.
+                RMSession.TryGetPlayerState(__instance.ProfileId, out var current);
+                DownedMovementController.TickSpeedLimit(__instance, current);
             }
             catch (Exception ex)
             {

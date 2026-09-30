@@ -102,6 +102,22 @@ namespace KeepMeAlive.Fika
                 RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help while state={playerState.State}");
                 return;
             }
+            // First helper keeps the claim; a second helper overwriting it would let that helper's
+            // cancel drop IsBeingRevived while the first is still holding.
+            if (playerState.IsBeingRevived && !string.IsNullOrEmpty(playerState.CurrentReviverId)
+                && playerState.CurrentReviverId != packet.reviverId)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help from {packet.reviverId}; already helped by {playerState.CurrentReviverId}");
+                return;
+            }
+            // Only ever set on the revivee's own machine: their self-revive hold finished and the
+            // server is authorizing (and may be consuming the item). That attempt is committed, so
+            // the helper's own start will be denied server-side and send a cancel.
+            if (playerState.SelfReviveAwaitingAuth)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help from {packet.reviverId}; self-revive authorization in progress");
+                return;
+            }
             playerState.CurrentReviverId = packet.reviverId;
             playerState.IsBeingRevived = true;
             playerState.IsSelfReviving = false;
@@ -145,13 +161,21 @@ namespace KeepMeAlive.Fika
 
             var playerState = RMSession.GetPlayerState(packet.reviveeId);
             var prevState = playerState.State;
-            // Apply cancellation only while revival has not started or finished.
-            if (playerState.State is RMState.Reviving or RMState.Revived)
+            // A cancel only releases an active help claim; it never changes state. A late cancel
+            // (revivee already died, got up, or is in cooldown) must not drag them back into BleedingOut.
+            if (playerState.State != RMState.BleedingOut)
             {
-                Plugin.LogSource.LogWarning($"[Packet] TeamCancel: {packet.reviverId} cancel ignored - {packet.reviveeId} already in {playerState.State} state");
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {packet.reviveeId}: cancel from {packet.reviverId} ignored while state={playerState.State}");
                 return;
             }
-            RMSession.SetPlayerState(packet.reviveeId, RMState.BleedingOut);
+            // Only the recorded helper may release the claim. No claim (never helped, or the local
+            // watchdog already cleared it) means there is nothing to cancel - and proceeding would
+            // also wipe an in-progress self-revive hold.
+            if (playerState.CurrentReviverId != packet.reviverId)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {packet.reviveeId}: cancel from {packet.reviverId} ignored; active helper is {playerState.CurrentReviverId}");
+                return;
+            }
             playerState.IsBeingRevived = false;
             playerState.IsSelfReviving = false;
             playerState.CurrentReviverId = string.Empty;
@@ -272,10 +296,11 @@ namespace KeepMeAlive.Fika
             RevivalDebugLog.LogNetworkTrace($"[Packet] Revived: {packet.playerId} was revived by {packet.reviverId}");
 
             Player player = ModUtils.GetPlayerById(packet.playerId);
+            // Keep going without a Player object: returning here would leave this machine's view stuck
+            // in Reviving and, on the host, the ghost flag set (bots ignoring a revived player).
             if (player == null)
             {
-                Plugin.LogSource.LogWarning($"[Packet] Revived: Player {packet.playerId} not found");
-                return;
+                Plugin.LogSource.LogWarning($"[Packet] Revived: Player {packet.playerId} not found; applying state only");
             }
 
             bool isSelfRevive = string.IsNullOrEmpty(packet.reviverId) || packet.reviverId == packet.playerId;

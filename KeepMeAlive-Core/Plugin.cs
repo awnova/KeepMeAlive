@@ -66,6 +66,10 @@ namespace KeepMeAlive
             new RaidCoopStopSafetyPatch().Enable();
             new DownedFikaWeaponProceedBlockPatch().Enable();
             new AvailableActionsPatch().Enable();
+            new BodyProxyFindInteractablePatch().Enable();
+            new DownedInventoryScreenBlockPatch().Enable();
+            new DownedApplyItemBlockPatch().Enable();
+            new DownedQuickSlotSelectorBlockPatch().Enable();
             new SpecialSlotReviveItemPatch().Enable();
             new FikaOverlayPatch().Enable();
             new FikaHealthBarUpdateHealthPatch().Enable();

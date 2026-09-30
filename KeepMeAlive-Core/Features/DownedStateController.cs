@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using EFT;
+using EFT.UI.Screens;
 using UnityEngine;
 using KeepMeAlive.Helpers;
 using KeepMeAlive.Components;
@@ -67,6 +68,22 @@ namespace KeepMeAlive.Features
             KeyCode key = KeepMeAliveSettings.SELF_REVIVAL_KEY.Value;
             string label = $"{PlayerFacingMessages.Revive.SelfReviveCost(cost)}\n{PlayerFacingMessages.NetworkRevive.RevivePrompt(key)}";
             VFX_UI.ObjectivePanel(Color.blue, label);
+        }
+
+        private const float InventoryCloseRetrySeconds = 0.5f;
+        private static float _nextInventoryCloseAttempt;
+
+        // An inventory or loot screen open when the hit landed would otherwise stay usable while
+        // downed (DownedInventoryScreenBlockPatch only stops new ones opening).
+        private static void CloseInventoryIfOpen(Player player)
+        {
+            _nextInventoryCloseAttempt = Time.time + InventoryCloseRetrySeconds;
+            try
+            {
+                if (!EftScreenManager.Instance.CheckCurrentScreen(EEftScreenType.Inventory)) return;
+                player.GetComponent<GamePlayerOwner>()?.CloseInventoryIfOpen();
+            }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedStateController] CloseInventoryIfOpen failed: {ex.Message}"); }
         }
 
         private static void HideAllPanelsAndStop(RMPlayer st)
@@ -178,6 +195,8 @@ namespace KeepMeAlive.Features
                     FikaBridge.SendBleedingOutPacket(id, st.CriticalTimer, st.LivesRemaining);
                     RevivalAuthority.NotifyBeginCritical(id);
                     st.ResyncCooldown = -1f;
+
+                    CloseInventoryIfOpen(player);
 
                     DownedHealthAndEffectsManager.ApplyCriticalEffects(player);
                     DownedMovementController.ApplyRevivableState(player);
@@ -316,17 +335,26 @@ namespace KeepMeAlive.Features
 
             ReviveDebug.Log("TickDowned_Enter", player.ProfileId, player.IsYourPlayer, $"state={st.State}");
 
-            if (st.CriticalStateMainTimer is { IsRunning: true })
+            // While Reviving the transit panel shows revive progress, not bleed-out, so CriticalTimer
+            // is left frozen at its value when the revive started (it drives the screen effects).
+            if (st.State == RMState.BleedingOut)
             {
-                st.CriticalTimer = (float)st.CriticalStateMainTimer.GetTimeSpan().TotalSeconds;
-            }
-            else if (st.State == RMState.BleedingOut)
-            {
-                st.CriticalTimer -= Time.deltaTime;
-                if (st.CriticalStateMainTimer == null) TryLazyShowTransitTimer(player, st);
+                if (st.CriticalStateMainTimer is { IsRunning: true })
+                {
+                    st.CriticalTimer = (float)st.CriticalStateMainTimer.GetTimeSpan().TotalSeconds;
+                }
+                else
+                {
+                    st.CriticalTimer -= Time.deltaTime;
+                    if (st.CriticalStateMainTimer == null) TryLazyShowTransitTimer(player, st);
+                }
             }
 
             if (player.IsYourPlayer) DownedScreenEffects.Tick(st);
+
+            // The game's close can be refused (e.g. while another close is still in flight), so keep
+            // retrying until the screen is actually gone.
+            if (player.IsYourPlayer && Time.time >= _nextInventoryCloseAttempt) CloseInventoryIfOpen(player);
 
             SelfReviveInput.Tick(player, st);
 

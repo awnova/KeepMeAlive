@@ -45,7 +45,11 @@ namespace KeepMeAlive.Features
             ECommand.SelectFastSlot8,
             ECommand.SelectFastSlot9,
             ECommand.SelectFastSlot0,
-            ECommand.QuickKnifeKick
+            ECommand.QuickKnifeKick,
+            // Quick-throw puts a grenade in hand via SetItemInHands, which the firearm Proceed block
+            // does not cover.
+            ECommand.ThrowGrenade,
+            ECommand.PressThrowGrenade
         };
 
         //====================[ Reflection Accessor ]====================
@@ -319,6 +323,8 @@ namespace KeepMeAlive.Features
                 UnhookProneGuard();
                 RemoveIgnored(StanceCommands);
                 RemoveIgnored(WeaponSelectCommands);
+                // The previous raid's MovementContext is gone; forget the limit it held.
+                _appliedSpeedLimit = -1f;
             }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] ScrubDownedInputLocks error: {ex.Message}"); }
         }
@@ -384,16 +390,64 @@ namespace KeepMeAlive.Features
             }
         }
 
-        // Scale walk speed from downed settings, or freeze movement while revive flow is active.
-        public static void ApplyDownedMovementSpeed(Player player, RMPlayer st)
+        //====================[ Speed Limit ]====================
+        // Use the game's state speed limit, which is not recalculated from carried weight.
+        // BarbedWire is cleared on exit, so re-apply the limit periodically.
+        private const Player.ESpeedLimit SpeedLimitCause = Player.ESpeedLimit.BarbedWire;
+        private const float SpeedLimitReassertInterval = 0.25f;
+        private static float _appliedSpeedLimit = -1f; // -1 = no limit applied
+        private static float _nextSpeedLimitReassert;
+
+        // Apply downed and post-revive speed limits each tick.
+        public static void TickSpeedLimit(Player player, RMPlayer st)
         {
+            if (player?.MovementContext == null || !player.IsYourPlayer) return;
+
+            float target = st != null ? GetTargetSpeedLimit(st) : -1f;
+            if (target < 0f)
+            {
+                ClearSpeedLimit(player);
+                return;
+            }
+
+            if (Mathf.Approximately(target, _appliedSpeedLimit) && Time.time < _nextSpeedLimitReassert) return;
+
             try
             {
-                bool frozen = st.State == RMState.Reviving || st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth || st.SelfReviveHoldTime > 0f;
-                float baseSpd = st.OriginalMovementSpeed > 0 ? st.OriginalMovementSpeed : player.Physical.WalkSpeedLimit;
-                player.Physical.WalkSpeedLimit = frozen ? 0f : baseSpd * (SyncedServerConfigStore.Config.Gameplay.Revival.DownedMovementSpeedPercent / 100f);
+                var mc = player.MovementContext;
+                mc.RemoveStateSpeedLimit(SpeedLimitCause);
+                mc.AddStateSpeedLimit(target * mc.MaxSpeed, SpeedLimitCause);
+                _appliedSpeedLimit = target;
+                _nextSpeedLimitReassert = Time.time + SpeedLimitReassertInterval;
             }
-            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] ApplyDownedMovementSpeed error: {ex.Message}"); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] TickSpeedLimit error: {ex.Message}"); }
+        }
+
+        public static void ClearSpeedLimit(Player player)
+        {
+            if (player == null || !player.IsYourPlayer || _appliedSpeedLimit < 0f) return;
+            _appliedSpeedLimit = -1f;
+
+            try { player.MovementContext?.RemoveStateSpeedLimit(SpeedLimitCause); }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] ClearSpeedLimit error: {ex.Message}"); }
+        }
+
+        // Fraction of max speed, or -1 for no limit.
+        private static float GetTargetSpeedLimit(RMPlayer st)
+        {
+            switch (st.State)
+            {
+                case RMState.BleedingOut:
+                    bool frozen = st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth;
+                    return frozen ? 0f : Mathf.Clamp01(SyncedServerConfigStore.Config.Gameplay.Revival.DownedMovementSpeedPercent / 100f);
+                case RMState.Reviving:
+                    return 0f;
+                case RMState.Revived:
+                    float mult = PostReviveEffects.GetInvulnSpeedMultiplier((ReviveSource)st.ReviveRequestedSource);
+                    return mult < 1f ? Mathf.Clamp01(mult) : -1f;
+                default:
+                    return -1f;
+            }
         }
     }
 }

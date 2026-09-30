@@ -62,7 +62,6 @@ namespace KeepMeAlive.Components
         //====================[ Stored Values ]====================
         public float OriginalAwareness { get; set; } = -1f;
         public bool HasStoredAwareness { get; set; }
-        public float OriginalMovementSpeed { get; set; } = -1f;
         public EDamageType PlayerDamageType { get; set; } = EDamageType.Undefined;
 
         //====================[ UI Timers ]====================

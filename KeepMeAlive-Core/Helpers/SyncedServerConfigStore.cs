@@ -94,7 +94,6 @@ namespace KeepMeAlive.Helpers
     internal sealed class SyncedTeamHealingConfig
     {
         public bool Enabled { get; set; }
-        public float InteractRangeMeters { get; set; }
         public float HoldSeconds { get; set; }
         public float UseTimeMultiplier { get; set; }
         public float MinHpResourceToDisplay { get; set; }

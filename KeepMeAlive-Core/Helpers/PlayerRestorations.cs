@@ -11,42 +11,17 @@ namespace KeepMeAlive.Helpers
     internal static class PlayerRestorations
     {
         //====================[ Movement Restoration ]====================
-        public static void StoreOriginalMovementSpeed(Player player)
-        {
-            if (player is null)
-            {
-                return;
-            }
-            
-            try
-            {
-                var st = RMSession.GetPlayerState(player.ProfileId);
-                if (st.OriginalMovementSpeed < 0)
-                {
-                    st.OriginalMovementSpeed = player.Physical.WalkSpeedLimit;
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[PlayerRestorations] StoreOriginalMovementSpeed: {ex.Message}");
-            }
-        }
-
+        // Speed is not restored here: downed/invulnerability speed is a state speed limit owned by
+        // DownedMovementController.TickSpeedLimit.
         public static void RestorePlayerMovement(Player player, bool forceStandingPose = true)
         {
             if (player is null || !player.IsYourPlayer)
             {
                 return;
             }
-            
+
             try
             {
-                var st = RMSession.GetPlayerState(player.ProfileId);
-                if (st.OriginalMovementSpeed > 0)
-                {
-                    player.Physical.WalkSpeedLimit = st.OriginalMovementSpeed;
-                }
-
                 if (forceStandingPose)
                 {
                     player.MovementContext.SetPoseLevel(1f);

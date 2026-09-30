@@ -142,12 +142,20 @@ namespace KeepMeAlive.Features
                 reviverId,
                 stillValid: () =>
                 {
+                    // The reviver may have gone down or died while authorizing / consuming the item.
+                    if (reviver == null || reviver.HealthController == null || !reviver.HealthController.IsAlive
+                        || RMSession.IsPlayerCritical(reviverId))
+                        return false;
+
                     var target = RMSession.GetPlayerState(targetId);
                     return target.State == RMState.BleedingOut
                         && (string.IsNullOrEmpty(target.CurrentReviverId) || target.CurrentReviverId == reviverId);
                 },
                 onStart: () =>
                 {
+                    // No loopback: apply what the TeamReviveStart receivers apply, then broadcast, so
+                    // this machine stops offering "Revive" on a teammate who is already being revived.
+                    RevivePacketHandlers.ApplyRevivingState(targetId, RMSession.GetPlayerState(targetId), ReviveSource.Team, reviverId);
                     FikaBridge.SendTeamReviveStartPacket(targetId, reviverId);
                     Plugin.LogSource.LogInfo($"Revive hold completed for {targetId}");
                 },
@@ -273,7 +281,9 @@ namespace KeepMeAlive.Features
         // Remote players only: Fika never delivers our own RevivedPacket back to us.
         internal static void FinalizeRevivalFromPacket(Player player, string playerId, string reviverId)
         {
-            if (player.IsYourPlayer)
+            // player may be null when this machine has no Player object for them; the state
+            // bookkeeping and ghost-flag clear must still happen.
+            if (player != null && player.IsYourPlayer)
             {
                 ReviveDebug.Log("FinalizeFromPacket_IgnoredLocal", playerId, true, $"reviver={reviverId}");
                 return;

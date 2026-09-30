@@ -253,7 +253,6 @@ public sealed class ProtectionConfig
 public sealed class TeamHealingConfig
 {
     public bool Enabled { get; set; } = true;
-    public float InteractRangeMeters { get; set; } = 1f;
     public float HoldSeconds { get; set; } = 1f;
     public float UseTimeMultiplier { get; set; } = 1f;
     public float MinHpResourceToDisplay { get; set; } = 50f;
@@ -262,7 +261,6 @@ public sealed class TeamHealingConfig
 
     public void Normalize()
     {
-        InteractRangeMeters = Math.Max(0f, InteractRangeMeters);
         HoldSeconds = Math.Max(0.1f, HoldSeconds);
         UseTimeMultiplier = Math.Max(0.01f, UseTimeMultiplier);
         MinHpResourceToDisplay = Math.Max(0f, MinHpResourceToDisplay);

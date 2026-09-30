@@ -83,6 +83,9 @@ namespace KeepMeAlive.Features
             ReviveDebug.Log("ReviveEffects_Start", player.ProfileId, true, $"source={(ReviveSource)st.ReviveRequestedSource}");
             if (SyncedServerConfigStore.Config.Gameplay.Revival.BlockUiWhenDowned) DownedUiBlocker.SetBlocked(true);
             SetBlur(st, true);
+            // Raise the command block before the weapon is drawn, not after the pose: otherwise the
+            // player can fire, aim, reload and move for the whole draw.
+            st.IsSilentInventoryAnimActive = true;
 
             //====================[ 1. Gun In Hand ]====================
             st.AllowWeaponEquipForReviveAnim = true;
@@ -105,7 +108,6 @@ namespace KeepMeAlive.Features
             if (!IsStillReviving(player, st)) yield break;
 
             player.SetInventoryOpened(true);
-            st.IsSilentInventoryAnimActive = true;
             st.ReviveEffectsCoroutine = null;
             ReviveDebug.Log("ReviveEffects_Done", player.ProfileId, true, $"equipped={equipped}");
         }

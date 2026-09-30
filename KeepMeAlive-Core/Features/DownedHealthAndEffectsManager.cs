@@ -41,15 +41,13 @@ namespace KeepMeAlive.Features
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] RestoreVitalsToMinimum error: {ex.Message}"); }
         }
 
-        // Apply critical visual effects and store original movement speed for later restoration.
+        // Apply critical visual effects. The downed speed limit is driven per tick by
+        // DownedMovementController.TickSpeedLimit.
         public static void ApplyCriticalEffects(Player player)
         {
             if (player == null || !player.IsYourPlayer) return;
             try
             {
-                var st = RMSession.GetPlayerState(player.ProfileId);
-                PlayerRestorations.StoreOriginalMovementSpeed(player);
-
                 if (player.ActiveHealthController != null)
                 {
                     if (Cfg.Revival.ApplyContusionOnDowned)
@@ -59,8 +57,6 @@ namespace KeepMeAlive.Features
                     }
                     if (Cfg.Revival.ApplyStunOnDowned) player.ActiveHealthController.DoStun(Math.Min(Cfg.Revival.CriticalStateSeconds, Cfg.Revival.MaxStunSeconds), 1f);
                 }
-
-                DownedMovementController.ApplyDownedMovementSpeed(player, st);
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] ApplyCriticalEffects error: {ex.Message}"); }
         }

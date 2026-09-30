@@ -475,6 +475,10 @@ namespace KeepMeAlive.Features
                     return;
                 }
 
+                // A hold is already running; re-planting would cancel it without its callback firing.
+                // The running hold's handler still reports back to the picker.
+                if (healer.CurrentManagedState is PlantPlayerState) return;
+
                 if (healer.CurrentState is not IdlePlayerState)
                 {
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.CannotHealWhileMoving);

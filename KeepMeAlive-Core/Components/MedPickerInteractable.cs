@@ -13,7 +13,8 @@ namespace KeepMeAlive.Components
     //====================[ MedPickerInteractable ]====================
     // Spawned by BodyInteractable after the healer selects a category.
     // Shows one action per med item in that category the healer can apply to the patient, plus "Cancel".
-    // Destroys itself on any selection and restores BodyInteractable's collider.
+    // Has no collider: while it exists, hits on the patient's body proxies resolve to it.
+    // Destroys itself when closed or when a heal is applied.
     public class MedPickerInteractable : InteractableObject
     {
         //====================[ Properties ]====================
@@ -23,35 +24,20 @@ namespace KeepMeAlive.Components
 
         //====================[ Fields ]====================
         private MedCategory? _category;
-        private Collider _collider;
+        private bool _closed;
+
+        // Track action changes to avoid resetting the selection.
+        private GamePlayerOwner _viewerOwner;
+        private int _shownSignature;
+        private float _nextSignaturePoll;
+        private const float SignaturePollInterval = 0.25f;
 
         // Configuration
-        // Uses the configured range for the picker. When the setting is unset or <= 0, the picker
-        // keeps its historical 3m limit; BodyInteractableRuntime treats <= 0 as unlimited.
-        private const float FALLBACK_MAX_DISTANCE_SQ = 9f; // 3 meters squared
-        private static float MaxDistanceSq
-        {
-            get
-            {
-                float range = SyncedServerConfigStore.Config.Gameplay.TeamHealing.InteractRangeMeters;
-                return range > 0f ? range * range : FALLBACK_MAX_DISTANCE_SQ;
-            }
-        }
+        private const float MaxDistanceSq = 9f; // 3 meters squared
 
         //====================[ Unity Lifecycle ]====================
-        private void Awake()
-        {
-            _collider = GetComponent<Collider>();
-            if (_collider != null)
-            {
-                _collider.enabled = false;
-            }
-        }
-
         private void Update()
         {
-            if (_collider == null) return;
-
             // Patient or healer gone, dead or downed: the picker no longer makes sense.
             if (Healer == null || Patient == null
                 || Patient.HealthController == null || !Patient.HealthController.IsAlive
@@ -61,17 +47,26 @@ namespace KeepMeAlive.Components
                 return;
             }
 
-            // Walking away closes the picker (and re-enables the teammate's body colliders).
+            // Walking away closes the picker.
             if ((Healer.Position - Patient.Position).sqrMagnitude > MaxDistanceSq)
             {
                 Close();
                 return;
             }
 
-            if (!_collider.enabled) _collider.enabled = true;
+            RefreshListIfActionsChanged();
+        }
 
-            // Refresh the med-item wheel as the healer's inventory changes.
-            SetStateUpdateTime();
+        // Refresh only when the available actions change.
+        private void RefreshListIfActionsChanged()
+        {
+            if (_viewerOwner == null || Time.time < _nextSignaturePoll) return;
+            _nextSignaturePoll = Time.time + SignaturePollInterval;
+
+            var viewer = _viewerOwner.Player;
+            if (viewer == null || !ReferenceEquals(viewer.InteractableObject, this)) return;
+
+            if (BodyInteractable.Signature(BuildActions()) != _shownSignature) SetStateUpdateTime();
         }
 
         public void Init(Player healer, Player patient, BodyInteractable ownerBody, MedCategory? category = null)
@@ -82,17 +77,31 @@ namespace KeepMeAlive.Components
             _category = category;
         }
 
+        // Called on each list build; records what the list shows.
         public AvailableInteractionState GetActions(GamePlayerOwner owner)
         {
+            var actions = BuildActions();
+
+            // Only "Cancel" left: nothing usable remains, so close instead of showing it.
+            if (actions.Actions.Count <= 1)
+            {
+                Close();
+                return new AvailableInteractionState();
+            }
+
+            _viewerOwner = owner;
+            _shownSignature = BodyInteractable.Signature(actions);
+            _nextSignaturePoll = Time.time + SignaturePollInterval;
+            return actions;
+        }
+
+        private AvailableInteractionState BuildActions()
+        {
             var actions = new AvailableInteractionState();
+            if (_closed || Healer == null || Patient == null) return actions;
+
             try
             {
-                if (Healer == null || Patient == null)
-                {
-                    Close();
-                    return actions;
-                }
-
                 actions.Actions.Add(new InteractionAction
                 {
                     Name     = PlayerFacingMessages.Interaction.CancelAction,
@@ -100,7 +109,6 @@ namespace KeepMeAlive.Components
                     Action   = Close
                 });
 
-                int addedMeds = 0;
                 foreach (var item in TeamMedical.GetUsableMedsByCategory(Healer, Patient, _category))
                 {
                     Item captured = item;
@@ -110,14 +118,6 @@ namespace KeepMeAlive.Components
                         Disabled = false,
                         Action   = () => OnPickItem(captured)
                     });
-                    addedMeds++;
-                }
-
-                // Close the picker when no usable items remain.
-                if (addedMeds == 0)
-                {
-                    Close();
-                    return actions;
                 }
             }
             catch (Exception ex)
@@ -142,9 +142,12 @@ namespace KeepMeAlive.Components
             });
         }
 
+        // Safe to call late (e.g. from a heal callback after the picker was already destroyed).
         private void Close()
         {
-            OwnerBody?.RestoreFromPicker();
+            if (_closed || this == null) return;
+            _closed = true;
+            if (OwnerBody != null) OwnerBody.RestoreFromPicker(this);
             Destroy(gameObject);
         }
     }

@@ -30,8 +30,10 @@ namespace KeepMeAlive.Features
 
         public static void TickCooldown(Player player, RMPlayer st)
         {
-            if (st.State != RMState.CoolDown || st.CooldownTimer <= 0f) return;
+            if (st.State != RMState.CoolDown) return;
 
+            // A zero (or already elapsed) cooldown must still end, or the player stays in CoolDown
+            // for the rest of the raid and every later lethal hit kills them outright.
             st.CooldownTimer -= Time.deltaTime;
             if (st.CooldownTimer > 0f) return;
 
@@ -56,13 +58,12 @@ namespace KeepMeAlive.Features
             var source = (ReviveSource)st.ReviveRequestedSource;
             st.InvulnerabilityTimer = PostReviveEffects.GetInvulnDuration(source);
 
-            if (player == null) return;
-
-            // Ghost mode is host-driven (bots live on the host), so every machine clears it.
-            try { GhostMode.ExitGhostMode(player); }
+            // Ghost mode is host-driven (bots live on the host), so every machine clears it - by id, so
+            // the flag is dropped even when this machine has no Player object for them.
+            try { GhostMode.ExitGhostModeById(playerId); }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[PostRevival] ExitGhostMode error: {ex.Message}"); }
 
-            if (!player.IsYourPlayer) return;
+            if (player == null || !player.IsYourPlayer) return;
 
             HeartbeatEffect.Stop(st);
             DownedScreenEffects.Stop();
@@ -83,7 +84,6 @@ namespace KeepMeAlive.Features
         {
             try
             {
-                var source = (ReviveSource)st.ReviveRequestedSource;
                 ReviveDebug.Log("InvulnStart_Enter", player.ProfileId, true, $"state={st.State} hasInit={st.HasInitializedInvulnerability}");
 
                 if (!st.HasInitializedInvulnerability)
@@ -96,11 +96,7 @@ namespace KeepMeAlive.Features
                     PlayerRestorations.RestorePlayerWeapon(player);
                     PlayerRestorations.RestorePlayerMovement(player, forceStandingPose: true);
                     DownedMovementController.ReattachMovementHooks(player);
-
-                    if (st.OriginalMovementSpeed > 0 && player.Physical != null)
-                    {
-                        player.Physical.WalkSpeedLimit = st.OriginalMovementSpeed * PostReviveEffects.GetInvulnSpeedMultiplier(source);
-                    }
+                    // The invulnerability speed multiplier is applied by DownedMovementController.TickSpeedLimit.
                 }
 
                 VFX_UI.HideTransitPanel();
@@ -130,7 +126,7 @@ namespace KeepMeAlive.Features
             DownedMovementController.ReleaseProne(player);
             DownedMovementController.ReleaseEmptyHands(player);
             PlayerRestorations.RestorePlayerMovement(player, forceStandingPose: false);
-            st.OriginalMovementSpeed = -1f;
+            DownedMovementController.ClearSpeedLimit(player);
 
             RevivalAuthority.NotifyEndInvulnerability(player.ProfileId);
             FikaBridge.SendPlayerStateResetPacket(player.ProfileId, isDead: false, cd);
@@ -138,7 +134,7 @@ namespace KeepMeAlive.Features
             DownedStateController.ClearRevivePromptTimer(st);
             VFX_UI.HideObjectivePanel();
             VFX_UI.Text(Color.cyan, PlayerFacingMessages.PostRevive.InvulnerabilityEnded(cd));
-            PostReviveEffects.ApplyCooldownEffect(player, cd);
+            if (cd > 0f) PostReviveEffects.ApplyCooldownEffect(player, cd);
         }
     }
 }

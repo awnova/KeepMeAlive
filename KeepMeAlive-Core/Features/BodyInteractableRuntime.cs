@@ -5,7 +5,6 @@ using EFT;
 using EFT.UI;
 using KeepMeAlive.Components;
 using KeepMeAlive.Helpers;
-using UnityEngine;
 
 namespace KeepMeAlive.Features
 {
@@ -16,24 +15,23 @@ namespace KeepMeAlive.Features
         //====================[ Cache ]====================
         private static readonly Dictionary<string, BodyInteractable> Cache = new Dictionary<string, BodyInteractable>();
 
+        public static bool HasAny => Cache.Count > 0;
+
+        public static bool Has(string profileId) =>
+            !string.IsNullOrEmpty(profileId) && Cache.TryGetValue(profileId, out var bi) && bi != null;
+
         //====================[ Public API ]====================
         public static bool TryRouteActions(GamePlayerOwner owner, IInteractive interactive, ref AvailableInteractionState result)
         {
             return TryRouteInteractive(owner, interactive, ref result);
         }
 
-        // Routes actions for BodyInteractable, BodyInteractableProxy, and MedPickerInteractable instances.
+        // Routes actions for BodyInteractable and MedPickerInteractable instances.
         private static bool TryRouteInteractive(GamePlayerOwner owner, IInteractive interactive, ref AvailableInteractionState result)
         {
             if (interactive is BodyInteractable body)
             {
-                result = InRange(owner, body) ? body.GetActions(owner) : new AvailableInteractionState();
-                return true;
-            }
-
-            if (interactive is BodyInteractable.BodyInteractableProxy proxy && proxy.Owner != null)
-            {
-                result = InRange(owner, proxy.Owner) ? proxy.Owner.GetActions(owner) : new AvailableInteractionState();
+                result = body.GetActions(owner);
                 return true;
             }
 
@@ -44,15 +42,6 @@ namespace KeepMeAlive.Features
             }
 
             return false;
-        }
-
-        // Enforce the configurable interact range for the body-collider raycast path.
-        // <= 0 means unlimited.
-        private static bool InRange(GamePlayerOwner owner, BodyInteractable body)
-        {
-            float maxRange = SyncedServerConfigStore.Config.Gameplay.TeamHealing.InteractRangeMeters;
-            if (maxRange <= 0f || body?.Revivee == null || owner?.Player == null) return true;
-            return Vector3.Distance(owner.Player.Position, body.Revivee.Position) <= maxRange;
         }
 
         //====================[ Lifecycle ]====================
