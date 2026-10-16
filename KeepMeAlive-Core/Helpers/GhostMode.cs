@@ -6,7 +6,6 @@ using System.Reflection;
 using Comfort.Common;
 using EFT;
 using KeepMeAlive.Fika;
-using UnityEngine;
 
 namespace KeepMeAlive.Helpers
 {
@@ -169,11 +168,11 @@ namespace KeepMeAlive.Helpers
 
                 if (!IsHost)
                 {
-                    Plugin.LogSource.LogInfo($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — CLIENT, flag set only");
+                    RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — CLIENT, flag set only");
                     return;
                 }
 
-                Plugin.LogSource.LogInfo($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — HOST");
+                RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — HOST");
 
                 int removedBots = 0;
                 int removedGroups = 0;
@@ -258,13 +257,13 @@ namespace KeepMeAlive.Helpers
                     }
                 }
 
-                Plugin.LogSource.LogInfo($"[GhostMode] Enter done (HOST): removed from {removedBots} bot controllers, {removedGroups} groups, cleared {clearedGoals} GoalEnemy refs");
+                RevivalDebugLog.LogDebug($"[GhostMode] Enter done (HOST): removed from {removedBots} bot controllers, {removedGroups} groups, cleared {clearedGoals} GoalEnemy refs");
 
                 // SAIN removal (runs AFTER vanilla so SAIN can clean up any remaining EnemyInfo refs)
                 int sainRemoved = RemoveFromSAIN(playerId);
                 if (sainRemoved > 0)
                 {
-                    Plugin.LogSource.LogInfo($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
+                    RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
                 }
             }
             catch (Exception ex)
@@ -285,7 +284,7 @@ namespace KeepMeAlive.Helpers
                 else
                 {
                     _ghostedPlayers.Add(playerId);
-                    Plugin.LogSource.LogInfo($"[GhostMode] EnterById: player object not found for {playerId}, flag set only");
+                    RevivalDebugLog.LogDebug($"[GhostMode] EnterById: player object not found for {playerId}, flag set only");
                 }
             }
             catch (Exception ex)
@@ -346,7 +345,7 @@ namespace KeepMeAlive.Helpers
                     }
                 }
 
-                Plugin.LogSource.LogInfo($"[GhostMode] Exit for {playerId} (HOST): restored enemy status in {addedGroups} bot groups");
+                RevivalDebugLog.LogDebug($"[GhostMode] Exit for {playerId} (HOST): restored enemy status in {addedGroups} bot groups");
             }
             catch (Exception ex)
             {

@@ -122,7 +122,6 @@ namespace KeepMeAlive.Features
             if (!player.IsYourPlayer) return;
 
             GodMode.Disable(player);
-            DownedHealthAndEffectsManager.RemoveRevivableState(player);
             DownedMovementController.ReleaseProne(player);
             DownedMovementController.ReleaseEmptyHands(player);
             PlayerRestorations.RestorePlayerMovement(player, forceStandingPose: false);

@@ -14,6 +14,13 @@ namespace KeepMeAlive.Helpers
     //====================[ ModUtils ]====================
     internal static class ModUtils
     {
+        //====================[ Hands ]====================
+        // Nothing in the player's hands.
+        public static bool IsEmptyHanded(Player player) => player.HandsController is Player.EmptyHandsController;
+
+        // A firearm in the player's hands (it needs only the right; the left can keep a dragged body).
+        public static bool HoldsFirearm(Player player) => player.HandsController is IFirearmHandsController;
+
         //====================[ Network / HTTP ]====================
 
         // SPT wraps all HTTP responses as: {"err":0,"errmsg":"","data":{...}}. We must extract the inner "data" field before deserializing into T.
@@ -81,7 +88,7 @@ namespace KeepMeAlive.Helpers
             char.ToUpperInvariant(name[0]) + name.Substring(1).ToLowerInvariant();
 
         //====================[ Revive Item ]====================
-        private static Item FindReviveItem(Player player)
+        internal static Item FindReviveItem(Player player)
         {
             try
             {

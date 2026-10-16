@@ -2,13 +2,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using EFT.UI;
-using HarmonyLib;
-using KeepMeAlive.Components;
 using KeepMeAlive.Features;
 using KeepMeAlive.Fika;
 using KeepMeAlive.Helpers;
@@ -291,17 +288,8 @@ namespace KeepMeAlive.Components
                 return;
             }
 
-            // A hold is already running. PlantPlayerState.Plant just exits the plant without firing
-            // the running hold's callback, so a second press would kill it with no cancel sent.
-            if (owner.Player.CurrentManagedState is PlantPlayerState) return;
-
-            if (owner.Player.CurrentState is not IdlePlayerState)
-            {
-                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.CannotReviveWhileMoving);
-                return;
-            }
-
-            VFX_UI.ObjectivePanel(Color.cyan, PlayerFacingMessages.Interaction.RevivingObjective, ReviveHoldTime);
+            // A hold is already running; a second press must not start another.
+            if (CrouchHoldState.IsActive(owner.Player)) return;
 
             var handler = new ReviveCompleteHandler
             {
@@ -310,8 +298,25 @@ namespace KeepMeAlive.Components
                 reviverId = owner.Player.ProfileId
             };
 
-            owner.Player.CurrentManagedState.Plant(true, false, ReviveHoldTime, handler.Complete);
-            FikaBridge.SendTeamHelpPacket(Revivee.ProfileId, owner.Player.ProfileId);
+            if (!CrouchHoldState.Begin(owner.Player, ReviveHoldTime, handler.Complete))
+            {
+                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.CannotReviveWhileMoving);
+                return;
+            }
+
+            VFX_UI.ObjectivePanel(Color.cyan, PlayerFacingMessages.Interaction.RevivingObjective, ReviveHoldTime);
+            // Claims locally too (no loopback), so this machine also drops any drag of the body.
+            FikaBridge.ClaimTeamHelp(Revivee.ProfileId, owner.Player.ProfileId);
+            // The defibrillator comes out for the hold (the weapon comes back when it ends), only with the claim:
+            // observers start it from the claim, so a refused one would show it on this screen alone. A body the reviver
+            // is dragging stays in their hands (the defibrillator would break the drag stance): the right hand jabs a stim
+            // into its shoulder instead (DraggerArms), and the body is dropped when the revive is done.
+            var reviveeState = RMSession.GetPlayerState(Revivee.ProfileId);
+            if (reviveeState.CurrentReviverId == owner.Player.ProfileId)
+            {
+                if (reviveeState.CurrentDraggerId == owner.Player.ProfileId) DraggerArms.BeginStim(owner.Player, ReviveHoldTime);
+                else DefibHands.Begin(owner.Player, ReviveHoldTime);
+            }
         }
 
         // Called on each list build; records what the list shows.
@@ -354,7 +359,7 @@ namespace KeepMeAlive.Components
                     });
                 }
 
-                if (reviveeState.CurrentDraggerId == owner.Player.ProfileId)
+                if (DownedDragController.IsLocalDraggingBody(Revivee.ProfileId))
                 {
                     actions.Actions.Add(new InteractionAction
                     {
@@ -532,13 +537,15 @@ namespace KeepMeAlive.Components
             public void Complete(bool result)
             {
                 VFX_UI.HideObjectivePanel();
+                // Completed: the shock lands now and the paddles are put away; cancelled: they go at once.
+                DefibHands.End(owner.Player, result);
 
                 if (result)
                 {
                     var reviveeState = RMSession.GetPlayerState(targetId);
                     if (reviveeState.State != RMState.BleedingOut)
                     {
-                        FikaBridge.SendTeamCancelPacket(targetId, reviverId);
+                        FikaBridge.ReleaseTeamHelp(targetId, reviverId);
                         VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.ReviveNoLongerPossible);
                         return;
                     }
@@ -547,7 +554,7 @@ namespace KeepMeAlive.Components
                 }
                 else
                 {
-                    FikaBridge.SendTeamCancelPacket(targetId, reviverId);
+                    FikaBridge.ReleaseTeamHelp(targetId, reviverId);
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.ReviveCancelled);
                 }
             }

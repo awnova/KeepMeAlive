@@ -15,9 +15,6 @@ namespace KeepMeAlive.Helpers
 
         //====================[ Properties ]====================
         public bool IsRunning { get; private set; }
-        public string Label { get; private set; } = "Timer";
-        public bool IsCountdown => isCountdown;
-        public float TotalDurationSeconds => totalDurationSeconds;
 
         //====================[ Events ]====================
         // OnTick: (timeSpan, formatted, progress01). Countdown progress is 0?1 over duration. Stopwatch progress is -1.
@@ -25,7 +22,7 @@ namespace KeepMeAlive.Helpers
         public event Action OnCompleted;
 
         //====================[ API ]====================
-        public void StartCountdown(float seconds, string label = "Countdown")
+        public void StartCountdown(float seconds)
         {
             if (seconds <= 0f)
             {
@@ -34,7 +31,6 @@ namespace KeepMeAlive.Helpers
 
             isCountdown = true;
             IsRunning = true;
-            Label = label;
             totalDurationSeconds = seconds;
 
             startTime = DateTime.UtcNow;
@@ -80,16 +76,10 @@ namespace KeepMeAlive.Helpers
         {
             if (!IsRunning)
             {
-                return isCountdown ? TimeSpan.Zero : TimeSpan.Zero;
+                return TimeSpan.Zero;
             }
             
             return isCountdown ? MaxZero(targetEndTime - DateTime.UtcNow) : (DateTime.UtcNow - startTime);
-        }
-
-        public string GetFormattedTime()
-        {
-            var span = GetTimeSpan();
-            return Format(span, isCountdown);
         }
 
         private void EmitTick() => EmitTick(GetTimeSpan());

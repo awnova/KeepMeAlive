@@ -5,7 +5,6 @@ using Comfort.Common;
 using EFT;
 using EFT.Communications;
 using EFT.InventoryLogic;
-using EFT.UI;
 using HarmonyLib;
 using KeepMeAlive.Components;
 using KeepMeAlive.Features;

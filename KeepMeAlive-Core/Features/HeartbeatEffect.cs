@@ -1,7 +1,6 @@
 //====================[ Imports ]====================
 using System;
 using System.Collections;
-using Comfort.Common;
 using EFT;
 using KeepMeAlive.Components;
 using KeepMeAlive.Helpers;
@@ -23,7 +22,7 @@ namespace KeepMeAlive.Features
         private const string ClipAssetName = "heartbeat_loop";
 
         // Matches BetterAudio.StartTinnitusEffect's own hardcoded
-        // Mathf.Max(15f, ...) floor (see BetterAudio.cs:654) - the tinnitus ring
+        // Mathf.Max(15f, ...) floor (BetterAudio.StartTinnitusEffect) - the tinnitus ring
         // is now capped to exactly this length, so phase 1 of the heartbeat ramp
         // is intentionally tied to the same window.
         private const float Phase1Duration = 15f;

@@ -1,6 +1,5 @@
 ﻿//====================[ Imports ]====================
 using System;
-using EFT;
 using UnityEngine;
 
 namespace KeepMeAlive.Helpers

@@ -17,6 +17,9 @@ namespace KeepMeAlive.Fika
     // file (TeamHealPacketHandlers) since it is a separate concern.
     internal static class RevivePacketHandlers
     {
+        // Time allowed after the team-revive hold for server authorization and the ReviveStart packet.
+        private const float ReviverWatchdogGraceSeconds = 10f;
+
         //====================[ Registration ]====================
         public static void Register(IFikaNetworkManager manager)
         {
@@ -28,6 +31,7 @@ namespace KeepMeAlive.Fika
             manager.RegisterPacket<RevivedPacket, NetPeer>(OnRevived);
             manager.RegisterPacket<PlayerStateResetPacket, NetPeer>(OnPlayerStateReset);
             manager.RegisterPacket<PlayerStateResyncPacket, NetPeer>(OnPlayerStateResync);
+            manager.RegisterPacket<GetUpPacket, NetPeer>(OnGetUp);
         }
 
         //====================[ Shared Helpers ]====================
@@ -82,6 +86,10 @@ namespace KeepMeAlive.Fika
             RevivalDebugLog.LogStateTrace("BleedingOutPacket", packet.playerId, prevState, playerState.State,
                 $"| timer={packet.timeRemaining:F2} reviver='{playerState.CurrentReviverId}' source={playerState.ReviveRequestedSource}");
 
+            // A fresh downing, not a repeat of the packet for this one.
+            if (prevState != RMState.BleedingOut)
+                DownedVoiceController.OnTeammateDowned(packet.playerId);
+
             // Ghost mode is host-driven (bots only exist on the host); keyed by profileId because
             // observed players have no ActiveHealthController. God mode is applied by the owner.
             if (SyncedServerConfigStore.Config.Gameplay.Protection.EnableGhostMode) GhostMode.EnterGhostModeById(packet.playerId);
@@ -99,32 +107,18 @@ namespace KeepMeAlive.Fika
             RevivalDebugLog.LogNetworkTrace($"[Packet] TeamHelp: {packet.reviverId} started helping {packet.reviveeId}");
 
             var playerState = RMSession.GetPlayerState(packet.reviveeId);
-            if (playerState.State != RMState.BleedingOut)
+            if (!ApplyTeamHelp(packet.reviveeId, playerState, packet.reviverId)) return;
+            if (IsLocalPlayer(packet.reviveeId)) DownedStateController.RequestClaimResync(playerState);
+
+            // The reviver's own peer started it with the hold; the hold time is synced config, the same everywhere.
+            if (!IsLocalPlayer(packet.reviverId))
             {
-                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help while state={playerState.State}");
-                return;
+                var reviver = ModUtils.GetPlayerById(packet.reviverId);
+                float hold = RevivePolicy.GetHoldDuration(ReviveSource.Team);
+                // Dragging the body: the reviver's right hand jabs a stim into it instead (DraggerArms).
+                if (playerState.CurrentDraggerId == packet.reviverId) DraggerArms.BeginStim(reviver, hold);
+                else DefibHands.Begin(reviver, hold);
             }
-            // First helper keeps the claim; a second helper overwriting it would let that helper's
-            // cancel drop IsBeingRevived while the first is still holding.
-            if (playerState.IsBeingRevived && !string.IsNullOrEmpty(playerState.CurrentReviverId)
-                && playerState.CurrentReviverId != packet.reviverId)
-            {
-                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help from {packet.reviverId}; already helped by {playerState.CurrentReviverId}");
-                return;
-            }
-            // Only ever set on the revivee's own machine: their self-revive hold finished and the
-            // server is authorizing (and may be consuming the item). That attempt is committed, so
-            // the helper's own start will be denied server-side and send a cancel.
-            if (playerState.SelfReviveAwaitingAuth)
-            {
-                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {packet.reviveeId}: ignored help from {packet.reviverId}; self-revive authorization in progress");
-                return;
-            }
-            playerState.CurrentReviverId = packet.reviverId;
-            playerState.IsBeingRevived = true;
-            playerState.IsSelfReviving = false;
-            // Start watchdog: if the reviver disconnects before ReviveStart arrives, TickDowned will clear IsBeingRevived (#1).
-            playerState.BeingRevivedWatchdogTimer = 10f;
 
             try
             {
@@ -156,33 +150,79 @@ namespace KeepMeAlive.Fika
             }
         }
 
+        // Records a helper's claim on a downed player. Also called by the helper itself before sending
+        // TeamHelp, since Fika never echoes its own packet back.
+        internal static bool ApplyTeamHelp(string reviveeId, RMPlayer playerState, string reviverId)
+        {
+            if (playerState.State != RMState.BleedingOut)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {reviveeId}: ignored help while state={playerState.State}");
+                return false;
+            }
+            // First helper keeps the claim; a second helper overwriting it would let that helper's
+            // cancel drop IsBeingRevived while the first is still holding.
+            if (playerState.IsBeingRevived && !string.IsNullOrEmpty(playerState.CurrentReviverId)
+                && playerState.CurrentReviverId != reviverId)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {reviveeId}: ignored help from {reviverId}; already helped by {playerState.CurrentReviverId}");
+                return false;
+            }
+            // Only ever set on the revivee's own machine: their self-revive hold finished and the
+            // server is authorizing (and may be consuming the item). That attempt is committed, so
+            // the helper's own start will be denied server-side and send a cancel.
+            if (playerState.SelfReviveAwaitingAuth)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {reviveeId}: ignored help from {reviverId}; self-revive authorization in progress");
+                return false;
+            }
+            playerState.CurrentReviverId = reviverId;
+            playerState.IsBeingRevived = true;
+            playerState.IsSelfReviving = false;
+            playerState.ReviveClaimTime = Time.time;
+            // Start watchdog: if the reviver disconnects before ReviveStart arrives, TickDowned will clear IsBeingRevived (#1).
+            // It must outlast the reviver's hold plus the server authorization and the ReviveStart packet.
+            playerState.BeingRevivedWatchdogTimer = RevivePolicy.GetHoldDuration(ReviveSource.Team) + ReviverWatchdogGraceSeconds;
+            return true;
+        }
+
+        // Releases a helper's claim. Also called by the helper itself before sending TeamCancel.
+        internal static bool ApplyTeamCancel(string reviveeId, RMPlayer playerState, string reviverId)
+        {
+            var prevState = playerState.State;
+            // A cancel only releases an active help claim; it never changes state. A late cancel
+            // (revivee already died, got up, or is in cooldown) must not drag them back into BleedingOut.
+            if (playerState.State != RMState.BleedingOut)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {reviveeId}: cancel from {reviverId} ignored while state={playerState.State}");
+                return false;
+            }
+            // Only the recorded helper may release the claim. No claim (never helped, or the local
+            // watchdog already cleared it) means there is nothing to cancel - and proceeding would
+            // also wipe an in-progress self-revive hold.
+            if (playerState.CurrentReviverId != reviverId)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {reviveeId}: cancel from {reviverId} ignored; active helper is {playerState.CurrentReviverId}");
+                return false;
+            }
+            playerState.IsBeingRevived = false;
+            playerState.IsSelfReviving = false;
+            playerState.CurrentReviverId = string.Empty;
+            playerState.ReviveClaimTime = Time.time;
+            RevivalDebugLog.LogStateTrace("TeamCancelPacket", reviveeId, prevState, playerState.State,
+                $"| cancelledBy='{reviverId}'");
+            return true;
+        }
+
         //====================[ TeamCancel ]====================
         private static void OnTeamCancel(TeamCancelPacket packet, NetPeer peer)
         {
             RevivalDebugLog.LogNetworkTrace($"[Packet] TeamCancel: {packet.reviverId} cancelled helping {packet.reviveeId}");
 
             var playerState = RMSession.GetPlayerState(packet.reviveeId);
-            var prevState = playerState.State;
-            // A cancel only releases an active help claim; it never changes state. A late cancel
-            // (revivee already died, got up, or is in cooldown) must not drag them back into BleedingOut.
-            if (playerState.State != RMState.BleedingOut)
-            {
-                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {packet.reviveeId}: cancel from {packet.reviverId} ignored while state={playerState.State}");
-                return;
-            }
-            // Only the recorded helper may release the claim. No claim (never helped, or the local
-            // watchdog already cleared it) means there is nothing to cancel - and proceeding would
-            // also wipe an in-progress self-revive hold.
-            if (playerState.CurrentReviverId != packet.reviverId)
-            {
-                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamCancelPacket] {packet.reviveeId}: cancel from {packet.reviverId} ignored; active helper is {playerState.CurrentReviverId}");
-                return;
-            }
-            playerState.IsBeingRevived = false;
-            playerState.IsSelfReviving = false;
-            playerState.CurrentReviverId = string.Empty;
-            RevivalDebugLog.LogStateTrace("TeamCancelPacket", packet.reviveeId, prevState, playerState.State,
-                $"| cancelledBy='{packet.reviverId}'");
+            if (!ApplyTeamCancel(packet.reviveeId, playerState, packet.reviverId)) return;
+            if (IsLocalPlayer(packet.reviveeId)) DownedStateController.RequestClaimResync(playerState);
+
+            if (!IsLocalPlayer(packet.reviverId)) DefibHands.End(ModUtils.GetPlayerById(packet.reviverId), completed: false);
 
             // If we are the revivee, restore the self-revive prompt
             Player reviveePlayer = ModUtils.GetPlayerById(packet.reviveeId);
@@ -364,6 +404,14 @@ namespace KeepMeAlive.Fika
             else GhostMode.ExitGhostModeById(packet.playerId);
         }
 
+        //====================[ GetUp ]====================
+        private static void OnGetUp(GetUpPacket packet, NetPeer peer)
+        {
+            if (IsLocalPlayer(packet.playerId)) return;
+            RevivalDebugLog.LogNetworkTrace($"[Packet] GetUp: {packet.playerId} at ({packet.x:F2}, {packet.y:F2}, {packet.z:F2}) yaw {packet.yaw:F0}");
+            DownedRagdollController.OnRemoteGetUp(packet.playerId, new Vector3(packet.x, packet.y, packet.z), packet.yaw);
+        }
+
         //====================[ PlayerStateResync ]====================
         private static void OnPlayerStateResync(PlayerStateResyncPacket packet, NetPeer peer)
         {
@@ -389,8 +437,15 @@ namespace KeepMeAlive.Fika
             st.CriticalTimer         = packet.criticalTimer;
             st.InvulnerabilityTimer  = packet.invulTimer;
             st.CooldownTimer         = packet.cooldownTimer;
-            st.CurrentReviverId      = packet.reviverId;
             st.ReviveRequestedSource = packet.reviveRequestedSource;
+            // The revive claim, unless this machine applied a help or cancel the owner may not have seen yet.
+            // Observers never run the owner's watchdog, so this is the only way a helper who left, or a help
+            // and cancel that crossed, is ever cleared here.
+            if (Time.time - st.ReviveClaimTime >= DownedDragController.ClaimSettleTime)
+            {
+                st.CurrentReviverId = packet.reviverId;
+                st.IsBeingRevived = incoming is RMState.BleedingOut or RMState.Reviving && !string.IsNullOrEmpty(packet.reviverId);
+            }
             st.LivesRemaining        = packet.livesRemaining;
             st.IsLimp                = packet.limp;
             DownedDragController.ApplyAuthoritativeDragger(packet.playerId, st, packet.draggerId);

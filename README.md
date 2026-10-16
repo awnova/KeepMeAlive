@@ -34,7 +34,7 @@ When you go down, your body falls limp. Move to recover and crawl while downed. 
 
 To give up, hold the configured key (default `Backspace`) for two seconds while downed and not being revived.
 
-A teammate can choose **Drag** on your downed PMC to pull you along. The dragger crouches and puts away their weapon. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, or go down. They can also use **Release**, and starting a revive ends the drag. You stay limp where you are released until you move.
+A teammate can choose **Drag** on your downed PMC to pull you along. The dragger crouches, puts away their weapon, and holds you by the shoulders. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, go down, or your body rolls out of their hands. They can also use **Release**, and a revive by anyone else ends the drag. The dragger can revive the body they are holding: their right hand takes a stim pen from their chest and holds it in your shoulder for the whole revive while the left keeps hold, then they put you down when it is done (a cancelled revive just puts the pen away and the drag carries on). You stay limp where you are released until you move.
 
 The default revive item is the item with template ID `5c052e6986f7746b207bc3c9`. By default, the server offers it from Therapist for 200,000 roubles at loyalty level 2.
 

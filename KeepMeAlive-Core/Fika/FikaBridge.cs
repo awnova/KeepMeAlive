@@ -55,14 +55,31 @@ namespace KeepMeAlive.Fika
             SendPacket(ref packet);
         }
 
-        public static void SendTeamHelpPacket(string reviveeId, string reviverId)
+        // The local player starts helping a downed player: the claim is recorded here too, since Fika never echoes our
+        // own packet back, then everyone else is told. Always use these two rather than the raw packets, or this
+        // machine never learns of its own claim.
+        public static void ClaimTeamHelp(string reviveeId, string reviverId)
+        {
+            RevivePacketHandlers.ApplyTeamHelp(reviveeId, RMSession.GetPlayerState(reviveeId), reviverId);
+            SendTeamHelpPacket(reviveeId, reviverId);
+        }
+
+        // The local player stops helping (cancelled, interrupted, or no longer possible): released here too, then
+        // everyone else is told.
+        public static void ReleaseTeamHelp(string reviveeId, string reviverId)
+        {
+            RevivePacketHandlers.ApplyTeamCancel(reviveeId, RMSession.GetPlayerState(reviveeId), reviverId);
+            SendTeamCancelPacket(reviveeId, reviverId);
+        }
+
+        private static void SendTeamHelpPacket(string reviveeId, string reviverId)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending team help packet: {reviverId} helping {reviveeId}");
             TeamHelpPacket packet = new() { reviveeId = reviveeId, reviverId = reviverId };
             SendPacket(ref packet);
         }
 
-        public static void SendTeamCancelPacket(string reviveeId, string reviverId)
+        private static void SendTeamCancelPacket(string reviveeId, string reviverId)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending team cancel packet: {reviverId} cancelled helping {reviveeId}");
             TeamCancelPacket packet = new() { reviveeId = reviveeId, reviverId = reviverId };
@@ -114,6 +131,13 @@ namespace KeepMeAlive.Fika
                 draggerId             = st.CurrentDraggerId ?? "",
                 limp                  = st.IsLimp
             };
+            SendPacket(ref packet);
+        }
+
+        public static void SendGetUpPacket(string playerId, UnityEngine.Vector3 root, float yaw)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending get-up packet for {playerId} at {root} yaw {yaw:F0}");
+            GetUpPacket packet = new() { playerId = playerId, x = root.x, y = root.y, z = root.z, yaw = yaw };
             SendPacket(ref packet);
         }
 

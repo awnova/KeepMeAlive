@@ -97,7 +97,7 @@ namespace KeepMeAlive.Features
         {
             if (st.State == RMState.Reviving)
             {
-                Plugin.LogSource.LogInfo($"[SelfReviveTrace] CancelReviveState ignored while already Reviving for {player?.ProfileId}");
+                RevivalDebugLog.LogSelfReviveTrace($"[SelfReviveTrace] CancelReviveState ignored while already Reviving for {player?.ProfileId}");
                 return;
             }
 
@@ -134,7 +134,7 @@ namespace KeepMeAlive.Features
         {
             if (st.IsReviveFinalizeCommittedForCurrentCycle)
             {
-                Plugin.LogSource.LogInfo($"[ReviveFinalize] Suppressed duplicate finalize ({source}) for {playerId} in cycle {st.ReviveCycleId}");
+                RevivalDebugLog.LogReviveFlow($"[ReviveFinalize] Suppressed duplicate finalize ({source}) for {playerId} in cycle {st.ReviveCycleId}");
                 return false;
             }
 
@@ -159,7 +159,7 @@ namespace KeepMeAlive.Features
                 if (st.State == RMState.CoolDown)
                 {
                     BodyInteractableRuntime.Remove(id);
-                    DeathMode.ForceBleedout(player);
+                    DeathMode.ForceBleedout(player, damageType);
                     return;
                 }
 
@@ -190,13 +190,15 @@ namespace KeepMeAlive.Features
                 {
                     if (Cfg.Revival.BlockUiWhenDowned) DownedUiBlocker.SetBlocked(true);
                     // LivesRemaining is updated at raid start and after a revive.
-                    DownedRagdollController.Begin(st);
+                    DownedRagdollController.Begin(player, st);
                     FikaBridge.SendBleedingOutPacket(id, st.CriticalTimer, st.LivesRemaining);
                     RevivalAuthority.NotifyBeginCritical(id);
                     st.ResyncCooldown = -1f;
 
                     CloseInventoryIfOpen(player);
 
+                    // Before the effects: the contusion's ring waits for this cry.
+                    DownedVoiceController.OnLocalDowned(player);
                     DownedHealthAndEffectsManager.ApplyCriticalEffects(player);
                     DownedMovementController.ApplyRevivableState(player);
                     if (Cfg.Revival.UnconsciousOnDowned) RevivePresentation.ApplyUnconscious(player);
@@ -256,11 +258,14 @@ namespace KeepMeAlive.Features
                 DownedUiBlocker.SetBlocked(false);
                 DownedMovementController.ScrubDownedInputLocks();
                 DownedDragController.Clear();
+                BodyAnimation.ClearAll();
+                DownedVoiceController.ClearAll();
                 GhostMode.ClearAll();
                 BodyInteractableRuntime.Clear();
                 DeathMode.ClearCaches();
                 TeamMedical.ClearReservations();
                 TeamHealUseTime.Clear();
+                DownedHealthAndEffectsManager.ResetDamageTracking();
                 RMSession.Clear();
                 RevivalDebugLog.LogDebug($"[Downed] Raid-boundary reset ({reason})");
             }
@@ -369,6 +374,8 @@ namespace KeepMeAlive.Features
                     Plugin.LogSource.LogWarning($"[Downed] Reviver watchdog expired for {player.ProfileId}; clearing IsBeingRevived");
                     st.CurrentReviverId = string.Empty;
                     CancelReviveState(player, st, PlayerFacingMessages.Downed.ReviverTimedOut, Color.yellow);
+                    // Observers never run this watchdog; the resync is how they drop the claim.
+                    RequestClaimResync(st);
                 }
             }
 
@@ -435,7 +442,21 @@ namespace KeepMeAlive.Features
             if (st.State == RMState.None || (st.ResyncCooldown -= Time.deltaTime) > 0f) return;
 
             st.ResyncCooldown = 5f;
+            if (st.ResyncFollowUp)
+            {
+                st.ResyncFollowUp = false;
+                st.ResyncCooldown = DownedDragController.ClaimSettleTime + 0.5f;
+            }
             FikaBridge.SendPlayerStateResyncPacket(player.ProfileId, st);
+        }
+
+        // Owner only, when a claim on them (drag or team-revive help) changes: a resync now for anyone who missed
+        // the change, and one more once the claim has settled. Peers ignore resyncs for ClaimSettleTime after their
+        // own claim change, so without the second one a crossed claim would only settle on the periodic resync.
+        internal static void RequestClaimResync(RMPlayer st)
+        {
+            st.ResyncCooldown = -1f;
+            st.ResyncFollowUp = true;
         }
 
         //====================[ UI ]====================

@@ -2,10 +2,8 @@
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using EFT;
 using HarmonyLib;
 using KeepMeAlive.Components;
-using KeepMeAlive.Features;
 using KeepMeAlive.Helpers;
 using Fika.Core;
 using Fika.Core.Main.Components;

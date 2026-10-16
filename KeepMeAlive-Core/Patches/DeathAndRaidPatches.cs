@@ -31,7 +31,7 @@ namespace KeepMeAlive.Patches
                 if (DeathMode.ShouldAllowDeathFromHardcoreHeadshot(player, __instance, damageType)
                     || !DeathMode.ShouldBlockDeath(player, damageType))
                 {
-                    DeathMode.OnLocalDeathAllowed(player);
+                    DeathMode.OnLocalDeathAllowed(player, damageType);
                     return true;
                 }
 
@@ -50,8 +50,33 @@ namespace KeepMeAlive.Patches
         }
     }
 
+    //====================[ DownedVitalsApplyDamagePatch ]====================
+    // Brackets the local player's ApplyDamage so vitals restored by the downing Kill() are
+    // restored again after the same hit's overdamage spread.
+    internal class DownedVitalsApplyDamagePatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(ActiveHealthController), nameof(ActiveHealthController.ApplyDamage));
+
+        [PatchPrefix]
+        private static void Prefix(ActiveHealthController __instance, out bool __state)
+        {
+            var player = __instance.Player;
+            __state = player != null && !player.IsAI && player.IsYourPlayer;
+            if (__state) DownedHealthAndEffectsManager.BeginApplyDamage();
+        }
+
+        [PatchFinalizer]
+        private static void Finalizer(ActiveHealthController __instance, bool __state)
+        {
+            if (!__state) return;
+            try { DownedHealthAndEffectsManager.EndApplyDamage(__instance.Player); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedVitalsApplyDamage] error: {ex.Message}"); }
+        }
+    }
+
     //====================[ RagdollDeathHandoffPatch ]====================
-    // Restore the remote body's bones before the corpse is created.
+    // Give the remote body back to EFT before the corpse is created, leaving its bones in the pose on screen.
     internal class RagdollDeathHandoffPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod() =>

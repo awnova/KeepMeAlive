@@ -3,7 +3,6 @@ using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using Comfort.Common;
 using EFT.UI;
 using EFT.Communications;
 
@@ -220,7 +219,7 @@ namespace KeepMeAlive.Helpers
                     // Subscribe before StartCountdown so its initial tick formats the label immediately.
                     timer.OnTick      += (span, formatted, p01) => OnTimerTick(timer, span, formatted, p01);
                     timer.OnCompleted += () => OnTimerDone(timer);
-                    timer.StartCountdown(seconds, label);
+                    timer.StartCountdown(seconds);
                     return timer;
                 }
                 catch (Exception ex)

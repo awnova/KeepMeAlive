@@ -16,6 +16,20 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\heartbeat_loop.wav" />
     <EmbeddedResource Include="Resources\revive_item_cooldown.png" />
+    <EmbeddedResource Include="Resources\downed_fall.json" />
+    <EmbeddedResource Include="Resources\downed_crouch_fall.json" />
+    <EmbeddedResource Include="Resources\downed_loop.json" />
+    <EmbeddedResource Include="Resources\downed_getup.json" />
+    <EmbeddedResource Include="Resources\downed_settle.json" />
+    <EmbeddedResource Include="Resources\defib_hands.json" />
+    <EmbeddedResource Include="Resources\defib_paddles.json" />
+    <EmbeddedResource Include="Resources\defib_paddle_basecolor.png" />
+    <EmbeddedResource Include="Resources\drag_stim_jab.json" />
+    <EmbeddedResource Include="Resources\drag_hold_grip.json" />
+    <EmbeddedResource Include="Resources\stim_pen.json" />
+    <EmbeddedResource Include="Resources\stim_pen_basecolor.png" />
+    <EmbeddedResource Include="Resources\stim_pen.bundle" />
+    <EmbeddedResource Include="Resources\defib_paddles.bundle" />
   </ItemGroup>
 
   <ItemGroup>

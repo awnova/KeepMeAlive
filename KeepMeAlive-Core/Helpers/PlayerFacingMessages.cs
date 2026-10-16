@@ -1,5 +1,4 @@
 //====================[ Imports ]====================
-using EFT;
 using KeepMeAlive.Components;
 using UnityEngine;
 
@@ -126,6 +125,9 @@ namespace KeepMeAlive.Helpers
             public const string ReviverTimedOut = "Reviver disconnected or timed out.";
             public const string GiveUpObjective = "Giving up {0:F1}";
             public const string GiveUpCanceled = "Give up canceled";
+
+            // Shown to everyone else when a teammate goes down.
+            public static string TeammateDown(string name) => $"{name} is down!";
 
             // Baked into the persistent middle-screen countdown panel so lives stay
             // visible for the player's entire time downed (see DownedStateController).

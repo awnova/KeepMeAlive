@@ -25,6 +25,9 @@ namespace KeepMeAlive.Features
 
             DownedMovementController.ScrubDownedInputLocks();
 
+            // The defibrillator's track and paddles, built now so the first revive does not hitch.
+            DefibHands.Preload();
+
             // Inject reviveItem icon eagerly so FikaHealthBar nameplates can show it.
             // FikaHealthBar.AddEffect() looks up effect.Type in _effectIcons when
             // EffectAddedEvent fires. Injection starts here and completes after hard settings load.

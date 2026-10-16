@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using EFT;
 using EFT.HealthSystem;
 using EFT.Communications;
-using EFT.UI;
 using KeepMeAlive.Components;
 using KeepMeAlive.Features;
 using UnityEngine;
@@ -92,8 +91,10 @@ namespace KeepMeAlive.Helpers
                 return false;
             }
 
+            // KillOverride: the death is already committed (bleed-out, give-up), so a lingering
+            // 0 HP head must not re-roll or re-announce.
             string playerId = player.ProfileId;
-            if (RMSession.TryGetPlayerState(playerId, out var st) && st.State != RMState.None)
+            if (RMSession.TryGetPlayerState(playerId, out var st) && (st.State != RMState.None || st.KillOverride))
             {
                 return false;
             }
@@ -135,7 +136,7 @@ namespace KeepMeAlive.Helpers
         // Called when a local death is allowed through without ForceBleedout (hardcore headshot,
         // cooldown, kill override). Makes sure UI/locks/audio are torn down and every peer and
         // the server learn the player is dead, so observers don't keep them marked as downed.
-        public static void OnLocalDeathAllowed(Player player)
+        public static void OnLocalDeathAllowed(Player player, EDamageType damageType)
         {
             if (player is null || !player.IsYourPlayer) return;
             if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return;
@@ -156,6 +157,8 @@ namespace KeepMeAlive.Helpers
 
                 if (!alreadyAnnounced)
                 {
+                    // Said while still alive so every peer hears this one (and before the reset packet).
+                    DownedVoiceController.SpeakDeathLine(player, damageType, always: false);
                     RevivalAuthority.NotifyReset(id);
                     Fika.FikaBridge.SendPlayerStateResetPacket(id, isDead: true);
                 }
@@ -166,8 +169,9 @@ namespace KeepMeAlive.Helpers
             }
         }
 
-        // Force the player to die now (end of critical bleed-out or give-up).
-        public static void ForceBleedout(Player player)
+        // Force the player to die now (end of critical bleed-out or give-up). lethalHit is the damage type of a hit
+        // that kills them outright instead (downed again during the cooldown).
+        public static void ForceBleedout(Player player, EDamageType? lethalHit = null)
         {
             if (player is null) return;
 
@@ -190,6 +194,11 @@ namespace KeepMeAlive.Helpers
                 // Clear ghost flag but don't re-add to enemy lists - Kill() fires BSG's death handlers to auto-cleanup.
                 GhostMode.ClearGhostFlag(id);
                 GodMode.Disable(player);
+
+                // Said while still alive so every peer hears this one; it goes out ahead of the reset below. A bleed-out
+                // or give-up is always voiced; a hit that kills outright follows vanilla (silent for the head).
+                if (lethalHit.HasValue) DownedVoiceController.SpeakDeathLine(player, lethalHit.Value, always: false);
+                else DownedVoiceController.SpeakDeathLine(player, st.PlayerDamageType, always: true);
 
                 // Sent before Kill() on the same reliable-ordered channel as Fika's own death sync,
                 // so observers clear the downed state before the body dies on their machine.

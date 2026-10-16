@@ -2,8 +2,11 @@
 # KeepMeAlive build script
 # Wipes the BepInEx and SPT_Runtime output folders, then builds both
 # projects (Release). Each project's PostBuild step copies its own output
-# into Build\KeepMeAlive, and the client also deploys straight to the live
-# SPT install (SPTBaseDir, default C:\SPT).
+# into Build\KeepMeAlive (the package). The package's client plugin and
+# server mod are then deployed into every SPT install in $deployRoots.
+# Files are copied over the top, so the server's generated config.json in
+# each install is kept. An install that is missing (Y: not mapped) or
+# locked (server running) is skipped with a warning.
 
 $ErrorActionPreference = 'Stop'
 
@@ -11,6 +14,7 @@ $repoRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $packageRoot = Join-Path $repoRoot 'Build\KeepMeAlive'
 $bepinDir    = Join-Path $packageRoot 'BepInEx'
 $sptDir      = Join-Path $packageRoot 'SPT_Runtime'
+$deployRoots = @('C:\SPT', 'Y:\SPT')
 
 Set-Location $repoRoot
 
@@ -31,3 +35,39 @@ dotnet build 'KeepMeAlive-Server/KeepMeAlive.Server.csproj' --configuration Rele
 if ($LASTEXITCODE -ne 0) { throw "KeepMeAlive-Server build failed" }
 
 Write-Host "Build complete: $packageRoot" -ForegroundColor Green
+
+# Package folder -> install folder, relative to the package / install root.
+$deployDirs = @(
+    'BepInEx\plugins',
+    'SPT_Runtime\user\mods\KeepMeAlive'
+)
+
+$skipped = @()
+foreach ($root in $deployRoots) {
+    if (-not (Test-Path $root)) {
+        Write-Warning "Skipping $root (not found)"
+        $skipped += $root
+        continue
+    }
+
+    Write-Host "Deploying to $root" -ForegroundColor Cyan
+    # Each part on its own, so a locked server mod does not hide that the client plugin went in (and vice versa).
+    foreach ($dir in $deployDirs) {
+        $target = Join-Path $root $dir
+        try {
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Copy-Item -Path (Join-Path (Join-Path $packageRoot $dir) '*') -Destination $target -Recurse -Force
+        }
+        catch {
+            Write-Warning "Deploy to $target failed (is the game or server running?): $($_.Exception.Message)"
+            $skipped += $target
+        }
+    }
+}
+
+if ($skipped.Count -gt 0) {
+    Write-Host "Not deployed to: $($skipped -join ', ')" -ForegroundColor Yellow
+}
+else {
+    Write-Host "Deployed to: $($deployRoots -join ', ')" -ForegroundColor Green
+}

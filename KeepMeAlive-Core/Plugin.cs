@@ -3,11 +3,9 @@ using BepInEx;
 using BepInEx.Bootstrap;
 using BepInEx.Logging;
 using System.Collections.Generic;
-using System.Linq;
 using HarmonyLib;
 using EFT.HealthSystem;
 using Fika.Core.Main.Utils;
-using KeepMeAlive.Features;
 using KeepMeAlive.Fika;
 using KeepMeAlive.Helpers;
 using KeepMeAlive.Patches;
@@ -62,7 +60,13 @@ namespace KeepMeAlive
         {
             new RevivalTickPatch().Enable();
             new DeathPatch().Enable();
+            new DownedVitalsApplyDamagePatch().Enable();
             new RagdollDeathHandoffPatch().Enable();
+            new PlayerPosePatch().Enable();
+            new ObservedPlayerPosePatch().Enable();
+            new DragPickupMovePatch().Enable();
+            new DragPickupCommandPatch().Enable();
+            new DragLeftHandCommandPatch().Enable();
             new RaidExtractSafetyPatch().Enable();
             new RaidCoopStopSafetyPatch().Enable();
             new DownedFikaWeaponProceedBlockPatch().Enable();
@@ -80,6 +84,13 @@ namespace KeepMeAlive
             new TeamHealUseTimePatch().Enable();
             new SilentInventoryCommandBlockPatch().Enable();
             new TinnitusCapPatch().Enable();
+            new DownedBreathPatch().Enable();
+            new LocalOnlyPhrasePatch().Enable();
+            new DownedVoiceTracePatch().Enable();
+            new ObservedHitLinePatch().Enable();
+            new ObservedDamageHitLinePatch().Enable();
+            new DownedDeathLinePatch().Enable();
+            new ObservedDownedDeathLinePatch().Enable();
             new DownedBloodApplyVignettePatch().Enable();
             new DownedBloodRenderPatch().Enable();
             new DownedVignetteFlickerPatch().Enable();
@@ -155,10 +166,12 @@ namespace KeepMeAlive
             if (typeToByte.ContainsKey(effectType.Name))
                 return;
 
-            // Deterministic fallback: walk down from the reserved byte to the first free slot.
+            // Deterministic fallback: walk down from the reserved byte to the first free slot,
+            // staying above EFT's native bytes (0 .. _effectTypes.Length - 1).
+            int nativeCount = HealthHelper.EffectTypeCode._effectTypes.Length;
             int index = ReservedEffectByte;
-            while (index > 0 && byteToType.ContainsKey((byte)index)) index--;
-            if (index <= 0 || index <= byteToType.Keys.Max())
+            while (index >= nativeCount && byteToType.ContainsKey((byte)index)) index--;
+            if (index < nativeCount)
             {
                 LogSource.LogError($"[Plugin] No free effect byte for {effectType.Name}; cooldown icon will not sync to teammates.");
                 return;

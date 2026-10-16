@@ -2,8 +2,6 @@
 using System;
 using System.Collections;
 using System.Reflection;
-using Comfort.Common;
-using EFT.UI;
 using UnityEngine;
 
 namespace KeepMeAlive.Helpers

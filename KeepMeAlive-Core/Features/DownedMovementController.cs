@@ -4,7 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using EFT;
-using EFT.HealthSystem;
 using EFT.InputSystem;
 using KeepMeAlive.Components;
 using KeepMeAlive.Helpers;
@@ -155,6 +154,12 @@ namespace KeepMeAlive.Features
             }
             catch { }
 
+            SnapProne(mc);
+        }
+
+        // Straight to the bottom of prone.
+        private static void SnapProne(MovementContext mc)
+        {
             mc.SetPoseLevel(0f, true);
             mc.IsInPronePose = true;
         }
@@ -259,7 +264,7 @@ namespace KeepMeAlive.Features
         }
 
         //====================[ Downed State Application ]====================
-        // Full downed-entry orchestration: settle active actions, prone, empty hands, vocalize, release turrets.
+        // Applies the downed state by ending active actions, forcing prone and empty hands, and releasing doors and stationary weapons.
         public static void ApplyRevivableState(Player player)
         {
             try
@@ -270,12 +275,7 @@ namespace KeepMeAlive.Features
 
                 ForceProne(player);
                 ForceEmptyHands(player);
-
-                if (player.ShouldVocalizeDeath(player.LastDamagedBodyPart))
-                {
-                    var trig = player.LastDamageType.IsWeaponInduced() ? EPhraseTrigger.OnDeath : EPhraseTrigger.OnAgony;
-                    try { player.Speaker.Play(trig, player.HealthStatus, true, null); } catch { }
-                }
+                // Going down is voiced by DownedVoiceController.OnLocalDowned.
 
                 var mc = player.MovementContext;
                 if (mc == null) return;
@@ -300,17 +300,17 @@ namespace KeepMeAlive.Features
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] ApplyRevivableState error: {ex.Message}"); }
         }
 
-        // Restores movement and animation state.
+        // Puts back what the downed entry took off the local player. The state-change footstep handler is not
+        // among it: nothing here detaches it, and Fika replaces the vanilla one on purpose (SetupFikaAudio), so
+        // re-adding it would double every step, stop and idle sound.
         public static void ReattachMovementHooks(Player player)
         {
             if (player.MovementContext == null) return;
             try
             {
-                var mc = player.MovementContext;
-                mc.OnStateChanged -= player.StateChangedHandler;
-                mc.OnStateChanged += player.StateChangedHandler;
-                mc.PhysicalConditionChanged -= player.ProceduralWeaponAnimation.PhysicalConditionUpdated;
-                mc.PhysicalConditionChanged += player.ProceduralWeaponAnimation.PhysicalConditionUpdated;
+                // ReleaseHand (stationary weapon, ApplyRevivableState) unsubscribes the IK store for good, and the arm
+                // IK reads what it stores every frame.
+                PlayerHooks.AttachWeaponAnimation(player);
             }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] Re-hook movement events error: {ex.Message}"); }
         }
@@ -378,11 +378,7 @@ namespace KeepMeAlive.Features
             try
             {
                 var mc = player.MovementContext;
-                if (!mc.IsInPronePose || mc.PoseLevel > 0.001f)
-                {
-                    mc.SetPoseLevel(0f, true);
-                    mc.IsInPronePose = true;
-                }
+                if (!IsProne(mc)) SnapProne(mc);
             }
             catch (Exception ex)
             {
@@ -391,9 +387,11 @@ namespace KeepMeAlive.Features
         }
 
         //====================[ Speed Limit ]====================
-        // Use the game's state speed limit, which is not recalculated from carried weight.
-        // BarbedWire is cleared on exit, so re-apply the limit periodically.
-        private const Player.ESpeedLimit SpeedLimitCause = Player.ESpeedLimit.BarbedWire;
+        // Held in the Weight slot: the game rebuilds that one itself (MovementContext.WeightRelatedValuesUpdated
+        // removes it and re-adds the real carried-weight limit), so clearing ours is one call that puts the real
+        // limit back, and a weight change that overwrites ours is re-applied within the interval below. Every other
+        // ESpeedLimit cause is set once by its own trigger (barbed wire on entry) and would be lost to us.
+        private const Player.ESpeedLimit SpeedLimitCause = Player.ESpeedLimit.Weight;
         private const float SpeedLimitReassertInterval = 0.25f;
         private static float _appliedSpeedLimit = -1f; // -1 = no limit applied
         private static float _nextSpeedLimitReassert;
@@ -416,7 +414,11 @@ namespace KeepMeAlive.Features
             {
                 var mc = player.MovementContext;
                 mc.RemoveStateSpeedLimit(SpeedLimitCause);
-                mc.AddStateSpeedLimit(target * mc.MaxSpeed, SpeedLimitCause);
+                // Never looser than the real weight limit this slot replaces.
+                float limit = target * mc.MaxSpeed;
+                float weightLimit = player.Physical.WalkSpeedLimit;
+                if (weightLimit < 1f) limit = Mathf.Min(limit, weightLimit * mc.MaxSpeed);
+                mc.AddStateSpeedLimit(limit, SpeedLimitCause);
                 _appliedSpeedLimit = target;
                 _nextSpeedLimitReassert = Time.time + SpeedLimitReassertInterval;
             }
@@ -428,7 +430,13 @@ namespace KeepMeAlive.Features
             if (player == null || !player.IsYourPlayer || _appliedSpeedLimit < 0f) return;
             _appliedSpeedLimit = -1f;
 
-            try { player.MovementContext?.RemoveStateSpeedLimit(SpeedLimitCause); }
+            try
+            {
+                var mc = player.MovementContext;
+                if (mc == null) return;
+                mc.RemoveStateSpeedLimit(SpeedLimitCause);
+                mc.WeightRelatedValuesUpdated(); // puts the real weight limit back
+            }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] ClearSpeedLimit error: {ex.Message}"); }
         }
 

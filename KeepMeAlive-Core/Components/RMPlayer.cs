@@ -50,11 +50,20 @@ namespace KeepMeAlive.Components
         // Time.time of the last local change to CurrentDraggerId; a resync from the owner older than the change
         // must not undo it while the change is still in flight.
         public float DragClaimTime { get; set; } = -100f;
+        // Time.time of the last team-revive help or cancel applied on this machine; the same guard for the revive
+        // claim (CurrentReviverId / IsBeingRevived).
+        public float ReviveClaimTime { get; set; } = -100f;
         // Shown as a ragdoll. Set on going down (every peer) and while dragged; the owner clears it once they
         // move and its resync clears it everywhere else.
         public bool IsLimp { get; set; }
         // Time.time the owner went limp (owner only), for the minimum limp time.
         public float LimpStartTime { get; set; }
+        // Observers: where the owner said they were (root, body yaw) when they took the body back (GetUpPacket), the
+        // Time.time it came, and where the replicated player was at that moment.
+        public Vector3 GetUpRoot { get; set; }
+        public float GetUpYaw { get; set; }
+        public float GetUpTime { get; set; } = -100f;
+        public Vector3 GetUpSeenRoot { get; set; }
         // Server-authoritative per-raid lives counter, shared across self- and team-revive.
         public int LivesRemaining { get; set; }
 
@@ -66,13 +75,13 @@ namespace KeepMeAlive.Components
         public float CooldownTimer { get; set; }
         // Countdown until the next periodic state resync broadcast. -1 sends immediately.
         public float ResyncCooldown { get; set; }
+        // Owner only: after the next resync, send one more once a changed claim has settled on every peer.
+        public bool ResyncFollowUp { get; set; }
         // Watchdog: counts down from a set value when IsBeingRevived is raised from a TeamHelp packet.
         // Countdown for the active team-revive request while State == BleedingOut.
         public float BeingRevivedWatchdogTimer { get; set; }
 
         //====================[ Stored Values ]====================
-        public float OriginalAwareness { get; set; } = -1f;
-        public bool HasStoredAwareness { get; set; }
         public EDamageType PlayerDamageType { get; set; } = EDamageType.Undefined;
 
         //====================[ UI Timers ]====================

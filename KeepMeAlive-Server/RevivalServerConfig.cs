@@ -87,9 +87,9 @@ public sealed class RevivalMechanicsConfig
 {
     public bool EnableSelfRevive { get; set; } = true;
     public bool EnableTeamRevive { get; set; } = true;
-    public float SelfReviveHoldSeconds { get; set; } = 2f;
-    public float TeamReviveHoldSeconds { get; set; } = 2f;
-    public float SelfReviveProgressSeconds { get; set; } = 10f;
+    public float SelfReviveHoldSeconds { get; set; } = 10f;
+    public float TeamReviveHoldSeconds { get; set; } = 5f;
+    public float SelfReviveProgressSeconds { get; set; } = 5f;
     public float TeamReviveProgressSeconds { get; set; } = 5f;
     public bool ConsumeReviveItemOnSelfRevive { get; set; } = true;
     public bool ConsumeReviveItemOnTeamRevive { get; set; } = false;
@@ -187,8 +187,9 @@ public sealed class PostReviveSourceConfig
         RestorePercent.Normalize();
 
         InvulnerabilityDurationSeconds = Math.Max(0f, InvulnerabilityDurationSeconds);
+        // The client applies this as a movement speed limit, which cannot raise speed above normal.
         InvulnerabilitySpeedPercent = float.IsFinite(InvulnerabilitySpeedPercent)
-            ? Math.Clamp(InvulnerabilitySpeedPercent, 0f, 200f)
+            ? Math.Clamp(InvulnerabilitySpeedPercent, 0f, 100f)
             : 100f;
         CooldownSeconds = Math.Max(0f, CooldownSeconds);
         ContusionDurationSeconds = Math.Max(0f, ContusionDurationSeconds);

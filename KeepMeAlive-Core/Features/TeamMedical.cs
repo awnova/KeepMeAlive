@@ -328,7 +328,7 @@ namespace KeepMeAlive.Features
                         foreach (var part in _allBodyParts)
                         {
                             if (hc.IsBodyPartBroken(part))    patientHasFracture  = true;
-                            if (hc.IsBodyPartDestroyed(part)) patientHasDestroyed = true;
+                            if (IsSurgicallyRestorable(hc, part)) patientHasDestroyed = true;
                             if (patientHasFracture && patientHasDestroyed) break;
                         }
                     }
@@ -379,18 +379,21 @@ namespace KeepMeAlive.Features
         // Returns true when the health state cannot be determined.
         //
         //   Bleeds  → IBleeding (LightBleeding / HeavyBleeding)
-        //   Breaks  → fracture on any part (IsBodyPartBroken) OR destroyed / blacked limb (IsBodyPartDestroyed)
+        //   Breaks  → fracture on any part (IsBodyPartBroken) OR destroyed / blacked part surgery can restore
         //   Health  → any non-destroyed body-part with HP below maximum (medkits can treat)
-        //   Comfort → catch-all: Pain (IPain), Contusion (IContusion),
-        //             Intoxication (IIntoxication), LethalIntoxication (ILethalIntoxication),
-        //             Dehydration (IDehydration), Exhaustion (IExhaustion),
-        //             or Hydration / Energy below 80 % of maximum.
+        //   Comfort → Pain (IPain), Contusion (IContusion),
+        //             Intoxication (IIntoxication), LethalIntoxication (ILethalIntoxication).
+        //             Dehydration / Exhaustion are treated by food and drink, so they belong to Nutrition.
         private static readonly EBodyPart[] _allBodyParts =
         {
             EBodyPart.Head, EBodyPart.Chest, EBodyPart.Stomach,
             EBodyPart.LeftArm, EBodyPart.RightArm,
             EBodyPart.LeftLeg, EBodyPart.RightLeg
         };
+
+        // EFT's RestoreBodyPart (CMS / SURV-12) refuses Head and Chest.
+        private static bool IsSurgicallyRestorable(IHealthController hc, EBodyPart part)
+            => part != EBodyPart.Head && part != EBodyPart.Chest && hc.IsBodyPartDestroyed(part);
 
         public static bool PatientNeedsCategory(Player patient, MedCategory category)
         {
@@ -410,7 +413,7 @@ namespace KeepMeAlive.Features
                         // Surgical kits (CMS / SURV-12) treat both conditions.
                         foreach (var part in _allBodyParts)
                         {
-                            if (hc.IsBodyPartBroken(part) || hc.IsBodyPartDestroyed(part))
+                            if (hc.IsBodyPartBroken(part) || IsSurgicallyRestorable(hc, part))
                                 return true;
                         }
                         return false;
@@ -436,10 +439,6 @@ namespace KeepMeAlive.Features
                         if (hc.FindActiveEffect<IIntoxication>(EBodyPart.Common) != null) return true;
                         // Lethal Intoxication (ILethalIntoxication)
                         if (hc.FindActiveEffect<ILethalIntoxication>(EBodyPart.Common) != null) return true;
-                        // Dehydration — critically low hydration actively dealing damage (IDehydration)
-                        if (hc.FindActiveEffect<IDehydration>(EBodyPart.Common) != null) return true;
-                        // Exhaustion — critically low energy actively dealing damage (IExhaustion)
-                        if (hc.FindActiveEffect<IExhaustion>(EBodyPart.Common) != null) return true;
                         return false;
 
                     case MedCategory.Nutrition:
@@ -475,18 +474,8 @@ namespace KeepMeAlive.Features
                     return;
                 }
 
-                // A hold is already running; re-planting would cancel it without its callback firing.
-                // The running hold's handler still reports back to the picker.
-                if (healer.CurrentManagedState is PlantPlayerState) return;
-
-                if (healer.CurrentState is not IdlePlayerState)
-                {
-                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.CannotHealWhileMoving);
-                    onComplete?.Invoke(false);
-                    return;
-                }
-
-                VFX_UI.ObjectivePanel(Color.green, PlayerFacingMessages.TeamHeal.HealingObjective, HEAL_HOLD_TIME);
+                // A hold is already running; its handler still reports back to the picker.
+                if (CrouchHoldState.IsActive(healer)) return;
 
                 var handler = new HealCompleteHandler
                 {
@@ -498,7 +487,14 @@ namespace KeepMeAlive.Features
                     onComplete   = onComplete
                 };
 
-                healer.CurrentManagedState.Plant(true, false, HEAL_HOLD_TIME, handler.Complete);
+                if (!CrouchHoldState.Begin(healer, HEAL_HOLD_TIME, handler.Complete))
+                {
+                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.CannotHealWhileMoving);
+                    onComplete?.Invoke(false);
+                    return;
+                }
+
+                VFX_UI.ObjectivePanel(Color.green, PlayerFacingMessages.TeamHeal.HealingObjective, HEAL_HOLD_TIME);
             }
             catch (Exception ex)
             {

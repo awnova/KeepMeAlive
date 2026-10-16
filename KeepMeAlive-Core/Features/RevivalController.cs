@@ -157,12 +157,12 @@ namespace KeepMeAlive.Features
                     // this machine stops offering "Revive" on a teammate who is already being revived.
                     RevivePacketHandlers.ApplyRevivingState(targetId, RMSession.GetPlayerState(targetId), ReviveSource.Team, reviverId);
                     FikaBridge.SendTeamReviveStartPacket(targetId, reviverId);
-                    Plugin.LogSource.LogInfo($"Revive hold completed for {targetId}");
+                    RevivalDebugLog.LogReviveFlow($"Revive hold completed for {targetId}");
                 },
                 onDenied: (message, color) =>
                 {
                     ReviveDebug.Log("TeamAuth_Denied", targetId, false, $"reviver={reviverId} reason='{message}'");
-                    FikaBridge.SendTeamCancelPacket(targetId, reviverId);
+                    FikaBridge.ReleaseTeamHelp(targetId, reviverId);
                     if (message != null)
                     {
                         VFX_UI.Text(color, message);

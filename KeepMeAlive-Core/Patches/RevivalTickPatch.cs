@@ -34,7 +34,9 @@ namespace KeepMeAlive.Patches
                 }
 
                 // Update ragdolls on remote copies and move the local body.
+                if (!__instance.IsYourPlayer) BodyInteractableRuntime.EnsureAttached(__instance);
                 DownedDragController.Tick(__instance);
+                DownedVoiceController.Tick(__instance);
 
                 if (!__instance.IsYourPlayer) return;
 

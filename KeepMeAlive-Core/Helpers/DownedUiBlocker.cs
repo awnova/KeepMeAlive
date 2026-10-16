@@ -1,6 +1,5 @@
 //====================[ Imports ]====================
 using System;
-using Comfort.Common;
 using EFT.UI;
 using UnityEngine;
 using UnityEngine.UI;

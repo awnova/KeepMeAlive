@@ -2,7 +2,6 @@
 using Fika.Core.Main.Utils;
 using Fika.Core.Modding;
 using Fika.Core.Modding.Events;
-using Fika.Core.Networking;
 using KeepMeAlive.Features;
 using KeepMeAlive.Helpers;
 

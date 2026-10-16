@@ -1,5 +1,6 @@
-﻿//====================[ Imports ]====================
+//====================[ Imports ]====================
 using EFT;
+using EFT.InventoryLogic;
 using KeepMeAlive.Components;
 using KeepMeAlive.Fika;
 using KeepMeAlive.Helpers;
@@ -8,23 +9,25 @@ using UnityEngine;
 namespace KeepMeAlive.Features
 {
     //====================[ DownedDragController ]====================
-    // Handles drag claims, release conditions, and movement of downed players.
+    // Drag claims and releases, and each peer's part of a drag (DragSession has the pickup and the hold frame):
+    //   dragger - picks the body up (locked in place until it is lifted, DragPickupLockPatches), then lets go when
+    //             the drag stance breaks;
+    //   revivee - their real position follows the hold frame once the body is lifted;
+    //   others  - their ragdoll of the body is held by the dragger's hands (BodyRagdoll).
+    // The dragger's arms are posed on every peer (DraggerArms).
     internal static class DownedDragController
     {
         //====================[ Tuning ]====================
-        // How far behind the dragger the body's head/shoulders trail (m).
-        private const float TrailDistance = 1.2f;
-        // How fast the body swings to line up with the pull (deg/s).
+        // How fast the revivee's body swings to line up with the pull (deg/s).
         private const float TurnSpeed = 140f;
-        // Follow strength (1/s) and maximum catch-up speed (m/s).
+        // Follow strength (1/s) and maximum catch-up speed (m/s) of the revivee's body toward the hold.
         private const float FollowGain = 12f;
         private const float MaxCatchUpSpeed = 14f;
         private const float FollowDeadZone = 0.03f;
-        // Closer than this the pull direction is too unstable to steer by (dragger standing over the body).
-        private const float MinTurnDistance = 0.5f;
         private const float MinTurnStepDegrees = 0.01f;
-        // Ignore resyncs that may predate a recent local claim change.
-        private const float ClaimSettleTime = 2f;
+        // Ignore resyncs that may predate a recent local claim change (a drag here, a team-revive help in
+        // RevivePacketHandlers).
+        internal const float ClaimSettleTime = 2f;
         // Past this the dragger lets go (teleport, a wall snag, or the body being left behind).
         private const float MaxLeashDistance = 7f;
         // Maximum angle away from the body before releasing.
@@ -34,10 +37,10 @@ namespace KeepMeAlive.Features
         // The game's own line between crouching and standing (Player.TogglePose).
         private const float StandingPoseLevel = 0.5f;
         private const float StartRange = 3f;
-        // Keeps the character controller grounded while the body is pulled.
-        private const float GroundStickSpeed = 2f;
-        // Root-to-chest distance of a remote dragged body (roughly a prone body's).
-        private const float RemotePullOffset = 0.5f;
+        // The revivee's real body is snagged (held back by geometry on its owner's side) while the hands carry the
+        // ragdoll on: the ragdoll's chest this far (m, level) from their root, for this long (s), lets go.
+        private const float SnagGap = 2.5f;
+        private const float SnagSeconds = 0.75f;
 
         //====================[ Local State ]====================
         // Whom the local player is dragging (null when nobody).
@@ -45,8 +48,20 @@ namespace KeepMeAlive.Features
         private static float _dragStartTime;
         private static bool _crouchSettled;
         private static bool _handsSettled;
+        // When the real body was first seen too far behind the ragdoll (-1 while it keeps up).
+        private static float _snagSince = -1f;
 
         public static bool IsLocalDragging => !string.IsNullOrEmpty(_draggingId);
+        public static bool IsLocalDraggingBody(string reviveeId) => IsLocalDragging && _draggingId == reviveeId;
+
+        // The local player is picking a body up: held in place, stance and hands locked, until it is lifted.
+        public static bool IsPickupLocked => TryGetLocalSession(out var session) && !session.IsHeld;
+
+        private static bool TryGetLocalSession(out DragSession session)
+        {
+            session = null;
+            return IsLocalDragging && DragContext.TryGetSession(_draggingId, out session);
+        }
 
         //====================[ Eligibility ]====================
         public static bool CanStartDrag(Player dragger, Player revivee, RMPlayer reviveeState)
@@ -93,9 +108,9 @@ namespace KeepMeAlive.Features
             if (st.CurrentDraggerId == draggerId) return;
             if (Time.time - st.DragClaimTime < ClaimSettleTime) return;
 
-            // Resend a release if the owner still thinks this player is dragging.
+            // Resend a release if the owner still thinks this player is dragging (them, not whoever is held now).
             var local = ModUtils.GetYourPlayer();
-            if (local != null && draggerId == local.ProfileId && !IsLocalDragging)
+            if (local != null && draggerId == local.ProfileId && _draggingId != reviveeId)
             {
                 FikaBridge.SendDragStatePacket(reviveeId, draggerId, false);
                 return;
@@ -112,29 +127,6 @@ namespace KeepMeAlive.Features
             st.DragClaimTime = Time.time;
         }
 
-        //====================[ Pull Geometry ]====================
-        // Position the body behind the dragger without pushing it when they move closer.
-        private static Vector3 TrailPoint(Vector3 draggerPosition, Vector3 chest)
-        {
-            Vector3 toBody = chest - draggerPosition;
-            toBody.y = 0f;
-            float distance = toBody.magnitude;
-            if (distance <= TrailDistance || distance < 1e-3f) return chest;
-
-            Vector3 held = draggerPosition + toBody / distance * TrailDistance;
-            held.y = chest.y;
-            return held;
-        }
-
-        // Heading toward the dragger, or null when they are too close.
-        private static float? PullYaw(Vector3 chest, Vector3 draggerPosition)
-        {
-            Vector3 toDragger = draggerPosition - chest;
-            toDragger.y = 0f;
-            if (toDragger.sqrMagnitude < MinTurnDistance * MinTurnDistance) return null;
-            return Mathf.Atan2(toDragger.x, toDragger.z) * Mathf.Rad2Deg;
-        }
-
         //====================[ Dragger Actions ]====================
         public static void StartDrag(GamePlayerOwner owner, Player revivee)
         {
@@ -147,39 +139,56 @@ namespace KeepMeAlive.Features
             if (!ApplyDragState(revivee.ProfileId, dragger.ProfileId, true)) return;
 
             _draggingId = revivee.ProfileId;
+            // Now, not on the next tick: the pickup lock holds from this frame.
+            DragContext.Begin(dragger, revivee);
             FikaBridge.SendDragStatePacket(revivee.ProfileId, dragger.ProfileId, true);
             EnterDragStance(dragger);
+            DragLookLimit.Begin(dragger);
 
             VFX_UI.Text(Color.cyan, PlayerFacingMessages.Interaction.DragHint);
             RevivalDebugLog.LogDebug($"[Drag] {dragger.ProfileId} started dragging {revivee.ProfileId}");
         }
 
-        // Dragger-initiated release (key, distance, own downing). Broadcasts to everyone.
-        public static void StopDrag(Player dragger, string reason)
+        // Dragger-initiated release (menu, stance, distance, own downing). Broadcasts to everyone; notify tells the dragger.
+        public static void StopDrag(Player dragger, string reason, bool notify = false)
         {
             if (!IsLocalDragging) return;
 
             string reviveeId = _draggingId;
+            HandTrace.Log($"drag {dragger.ProfileId}: let go of {reviveeId}: {reason} | {ReleaseSnapshot(dragger, ModUtils.GetPlayerById(reviveeId))}");
             ApplyDragState(reviveeId, dragger.ProfileId, false);
             FikaBridge.SendDragStatePacket(reviveeId, dragger.ProfileId, false);
 
             EndLocalDraggerSession();
+            EndSession(reviveeId);
             RevivalDebugLog.LogDebug($"[Drag] released {reviveeId} ({reason})");
+            if (notify) VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.DragReleased);
         }
 
-        // Crouch and stow the weapon. Either action can be undone to release.
+        // Crouch and stow the weapon. Once the body is lifted, undoing either lets go.
         private static void EnterDragStance(Player dragger)
         {
             var mc = dragger.MovementContext;
             if (mc.PoseLevel > 0f) dragger.CurrentManagedState.ChangePose(-mc.PoseLevel);
-            if (!IsEmptyHanded(dragger)) dragger.SetEmptyHands(null);
+            if (!ModUtils.IsEmptyHanded(dragger)) dragger.SetEmptyHands(null);
 
             _dragStartTime = Time.time;
+            _snagSince = -1f;
             _crouchSettled = false;
             _handsSettled = false;
         }
 
-        private static bool IsEmptyHanded(Player player) => player.HandsController is Player.EmptyHandsController;
+        // The weapon in hand is the one in the holster slot.
+        private static bool HoldsSidearm(Player player)
+        {
+            var weapon = player.HandsController?.Item as Weapon;
+            if (weapon == null) return false;
+            var holster = player.Equipment?.GetSlot(EquipmentSlot.Holster);
+            return holster != null && holster.ContainedItem == weapon;
+        }
+
+        // The local player has lifted the body and still drags it.
+        public static bool IsLocalHoldingBody => TryGetLocalSession(out var session) && session.IsHeld;
 
         // Returns the release reason when the drag stance is broken.
         private static string BrokenStance(Player dragger, Player revivee)
@@ -192,16 +201,17 @@ namespace KeepMeAlive.Features
             if (!_crouchSettled) _crouchSettled = crouched || !settling;
             if (_crouchSettled && !crouched) return "stance";
 
-            // Took anything into their hands: weapon, grenade, knife, meds.
-            bool empty = IsEmptyHanded(dragger);
+            // Took anything but the sidearm into their hands (it needs only the right; the left keeps the body):
+            // weapon, grenade, knife, meds.
+            bool empty = ModUtils.IsEmptyHanded(dragger) || HoldsSidearm(dragger);
             if (!_handsSettled) _handsSettled = empty || !settling;
             if (_handsSettled && !empty) return "hands";
 
             Vector3 toBody = revivee.Position - dragger.Position;
             toBody.y = 0f;
-            if (toBody.sqrMagnitude > TrailDistance * TrailDistance)
+            if (toBody.sqrMagnitude > 0.25f)
             {
-                float bearing = Mathf.Atan2(toBody.x, toBody.z) * Mathf.Rad2Deg;
+                float bearing = MathUtil.YawOf(toBody);
                 float off = Mathf.Abs(Mathf.DeltaAngle(mc.Rotation.x, bearing));
                 if (Mathf.Min(off, 180f - off) > MaxTurnAwayDegrees) return "turned";
             }
@@ -209,18 +219,55 @@ namespace KeepMeAlive.Features
             return null;
         }
 
+        // Every input the release checks read, as they are now, for the trace: so a let-go can be told from the log (the [Drag] released
+        // line is debug level, which the log file does not keep).
+        private static string ReleaseSnapshot(Player dragger, Player revivee)
+        {
+            if (dragger == null || revivee == null) return "dragger or revivee missing";
+            var mc = dragger.MovementContext;
+            Vector3 toBody = revivee.Position - dragger.Position;
+            float flat = new Vector2(toBody.x, toBody.z).magnitude;
+            float bearing = MathUtil.YawOf(new Vector3(toBody.x, 0f, toBody.z));
+            float off = Mathf.Abs(Mathf.DeltaAngle(mc.Rotation.x, bearing));
+            string chest = BodyRagdoll.TryGetChest(revivee.ProfileId, out Vector3 c)
+                ? $"{HandTrace.V(c)} ({HandTrace.Cm(new Vector2(c.x - dragger.Position.x, c.z - dragger.Position.z).magnitude)} from dragger)"
+                : "none";
+            bool held = TryGetLocalSession(out var session) && session.IsHeld;
+            return $"stage {(TryGetLocalSession(out var s) ? s.Current.ToString() : "none")} held={held} for {Time.time - _dragStartTime:F2}s | " +
+                $"dragger {HandTrace.V(dragger.Position)} look {mc.Rotation.x:F0} pose {mc.PoseLevel:F2} prone={mc.IsInPronePose} " +
+                $"emptyHands={ModUtils.IsEmptyHanded(dragger)} sidearm={HoldsSidearm(dragger)} | " +
+                $"revivee root {HandTrace.V(revivee.Position)} {HandTrace.Cm(flat)} away bearing {bearing:F0} off look {off:F0} (turned check {(flat * flat > 0.25f ? "on" : "off")}, " +
+                $"limit {MaxTurnAwayDegrees:F0}, counts {Mathf.Min(off, 180f - off):F0}) | ragdoll chest {chest} | rolled={BodyRagdoll.HasRolled(revivee.ProfileId)}";
+        }
+
+        // The revivee's real body (moved by its owner toward the hold) has not kept up with the ragdoll the hands carry.
+        private static bool IsSnagged(Player revivee)
+        {
+            if (!BodyRagdoll.TryGetChest(revivee.ProfileId, out Vector3 chest)) return false;
+            Vector3 gap = chest - revivee.Position;
+            gap.y = 0f;
+            if (gap.sqrMagnitude < SnagGap * SnagGap)
+            {
+                _snagSince = -1f;
+                return false;
+            }
+            if (_snagSince < 0f) _snagSince = Time.time;
+            return Time.time - _snagSince >= SnagSeconds;
+        }
+
         // Local cleanup only; the shared state is cleared by the caller.
         private static void EndLocalDraggerSession()
         {
             _draggingId = null;
+            DragLookLimit.Restore();
         }
 
-        // Hard reset for raid boundaries; nothing is broadcast because the session is gone.
-        public static void Clear()
-        {
-            EndLocalDraggerSession();
-            BodyRagdoll.ClearAll();
-        }
+        // This peer's part of a drag that ended: the hands let go.
+        private static void EndSession(string reviveeId) => DragContext.End(reviveeId);
+
+        // Hard reset for raid boundaries; nothing is broadcast because the session is gone. The drags themselves (and
+        // the bodies and arms) are cleared by BodyAnimation.ClearAll.
+        public static void Clear() => EndLocalDraggerSession();
 
         //====================[ Per-Player Tick ]====================
         // Runs for every non-AI player from Player.UpdateTick (see RevivalTickPatch).
@@ -233,20 +280,35 @@ namespace KeepMeAlive.Features
             bool dragged = st != null && st.IsBeingDragged && st.State == RMState.BleedingOut;
             Player dragger = dragged ? ModUtils.GetPlayerById(st.CurrentDraggerId) : null;
 
+            DragSession session = null;
+            if (dragger != null)
+            {
+                session = DragContext.Tick(dragger, player);
+            }
+            else
+            {
+                EndSession(player.ProfileId);
+            }
+
             if (!player.IsYourPlayer)
             {
-                TickRemoteBody(player, st, dragged, dragger);
+                // A dead dragger holds nothing; the owner's release follows a round trip later. Dragged as well as
+                // limp: the owner's limp flag can arrive a resync after the drag claim.
+                var hold = session != null && session.Dragger.HealthController.IsAlive ? session : null;
+                BodyRagdoll.Sync(player, dragged || DownedRagdollController.WantsRagdoll(st), hold);
                 return;
             }
 
-            if (dragged) TickDragged(player, st, dragger);
+            if (dragged) TickDragged(player, st, dragger, session);
             TickDragger(player);
         }
 
         // Drops a drag that can no longer hold. Every peer reaches the same conclusion from replicated state.
         private static void ValidateDrag(Player player, RMPlayer st)
         {
-            bool ended = st.State != RMState.BleedingOut || st.IsBeingRevived;
+            // The dragger's own revive keeps the drag until it is done (the hand jabs the stim while the body is held); anyone
+            // else's ends it.
+            bool ended = DragEnded(st);
             bool selfReviving = st.IsSelfReviving || st.SelfReviveAwaitingAuth;
             if (!ended && !selfReviving) return;
 
@@ -259,26 +321,16 @@ namespace KeepMeAlive.Features
                 FikaBridge.SendDragStatePacket(player.ProfileId, draggerId, false);
         }
 
-        //====================[ Observers: Remote Copy ]====================
-        // Updates the remote ragdoll from Fika's synced position and the current drag state.
-        private static void TickRemoteBody(Player player, RMPlayer st, bool dragged, Player dragger)
-        {
-            Vector3? hold = null;
-            if (dragged && dragger != null)
-            {
-                Vector3 root = player.Position;
-                Vector3 toDragger = dragger.Position - root;
-                toDragger.y = 0f;
-                float distance = toDragger.magnitude;
-                hold = distance > 1e-3f ? root + toDragger / distance * Mathf.Min(RemotePullOffset, distance) : root;
-            }
+        // The body is no longer down, or someone other than the dragger is reviving it: the drag cannot go on.
+        private static bool DragEnded(RMPlayer st) => st.State != RMState.BleedingOut || RevivedByOther(st);
 
-            // Dragged as well as limp: the owner's limp flag can arrive a resync after the drag claim.
-            BodyRagdoll.Sync(player, dragged || DownedRagdollController.WantsRagdoll(st), hold);
-        }
+        // A revive claim by someone other than the dragger.
+        private static bool RevivedByOther(RMPlayer st) => st.IsBeingRevived && st.CurrentReviverId != st.CurrentDraggerId;
 
         //====================[ Revivee: Move Real Position ]====================
-        private static void TickDragged(Player revivee, RMPlayer st, Player dragger)
+        // Once the body is lifted, the revivee's chest follows the hold point, the body turning so its head points
+        // at the dragger, as every ragdoll of it does. Still until then: the pickup happens where it lies.
+        private static void TickDragged(Player revivee, RMPlayer st, Player dragger, DragSession session)
         {
             var mc = revivee.MovementContext;
 
@@ -288,8 +340,10 @@ namespace KeepMeAlive.Features
                 string draggerId = st.CurrentDraggerId;
                 SetDragger(st, string.Empty);
                 FikaBridge.SendDragStatePacket(revivee.ProfileId, draggerId, false);
+                EndSession(revivee.ProfileId);
                 return;
             }
+            if (session == null || !session.IsHeld) return;
 
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
@@ -297,28 +351,24 @@ namespace KeepMeAlive.Features
             Vector3 root = revivee.Position;
             float yaw = mc.TransformRotation.eulerAngles.y;
             float pullOffset = MeasurePullOffset(revivee, root, yaw);
-            Vector3 chest = root + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * pullOffset;
-
-            Vector3 trail = TrailPoint(dragger.Position, chest);
+            Vector3 chest = root + MathUtil.YawForward(yaw) * pullOffset;
+            Vector3 hold = session.HoldPoint;
 
             // Turn the body's head toward the dragger while keeping the chest in place.
             Vector3 motion = Vector3.zero;
-            if (PullYaw(trail, dragger.Position) is float targetYaw)
+            float targetYaw = MathUtil.YawOf(-session.Away);
+            float newYaw = Mathf.MoveTowardsAngle(yaw, targetYaw, TurnSpeed * dt);
+            float delta = Mathf.DeltaAngle(yaw, newYaw);
+            if (Mathf.Abs(delta) > MinTurnStepDegrees && CanRotateProne(revivee, mc, delta))
             {
-                float newYaw = Mathf.MoveTowardsAngle(yaw, targetYaw, TurnSpeed * dt);
-                float delta = Mathf.DeltaAngle(yaw, newYaw);
-
-                if (Mathf.Abs(delta) > MinTurnStepDegrees && CanRotateProne(revivee, mc, delta))
-                {
-                    RotateBody(mc, delta);
-                    Vector3 chestAfter = root + Quaternion.Euler(0f, newYaw, 0f) * Vector3.forward * pullOffset;
-                    motion = chest - chestAfter;
-                    motion.y = 0f;
-                }
+                RotateBody(mc, delta);
+                Vector3 chestAfter = root + MathUtil.YawForward(newYaw) * pullOffset;
+                motion = chest - chestAfter;
+                motion.y = 0f;
             }
 
-            // Move the chest toward the trail point with proportional catch-up.
-            Vector3 gap = trail - chest;
+            // Move the chest toward the hold point with proportional catch-up.
+            Vector3 gap = hold - chest;
             gap.y = 0f;
             float distance = gap.magnitude;
             if (distance > FollowDeadZone)
@@ -328,19 +378,7 @@ namespace KeepMeAlive.Features
             }
 
             if (motion.sqrMagnitude < 1e-8f) return;
-            motion.y = -GroundStickSpeed * dt;
-
-            var cc = mc.CharacterController;
-            float savedLimit = cc.SpeedLimit;
-            try
-            {
-                cc.SpeedLimit = -1f;
-                mc.DirectApplyMotion(motion, dt);
-            }
-            finally
-            {
-                cc.SpeedLimit = savedLimit;
-            }
+            ForcedMotion.Apply(mc, motion, dt);
         }
 
         // The game's own check for turning while prone (would the body swing into a wall or off a ledge).
@@ -357,26 +395,34 @@ namespace KeepMeAlive.Features
         // Distance from the player origin to the chest bone, along the body.
         private static float MeasurePullOffset(Player player, Vector3 root, float yaw)
         {
-            Transform chest = player.PlayerBones.BodyPartCollidersDictionary[EBodyPartColliderType.RibcageUp].Collider.transform;
+            Transform chest = DragGrip.Chest(player);
+            if (chest == null) return 0f;
 
-            Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-            return Mathf.Max(0f, Vector3.Dot(chest.position - root, forward));
+            return Mathf.Max(0f, Vector3.Dot(chest.position - root, MathUtil.YawForward(yaw)));
         }
 
         //====================[ Dragger: Release ]====================
         private static void TickDragger(Player dragger)
         {
             if (!IsLocalDragging) return;
+            DragLookLimit.Hold();
 
             var reviveeState = RMSession.GetPlayerState(_draggingId);
             var revivee = ModUtils.GetPlayerById(_draggingId);
 
             bool gone = revivee == null || !revivee.HealthController.IsAlive;
             if (gone || reviveeState.CurrentDraggerId != dragger.ProfileId
-                || reviveeState.State != RMState.BleedingOut || reviveeState.IsBeingRevived)
+                || DragEnded(reviveeState))
             {
+                string reviveeId = _draggingId;
+                HandTrace.Log($"drag {dragger.ProfileId}: drag ended for {reviveeId}: gone={gone} claim='{reviveeState.CurrentDraggerId}' state={reviveeState.State} " +
+                    $"beingRevived={reviveeState.IsBeingRevived} reviver='{reviveeState.CurrentReviverId}' | {ReleaseSnapshot(dragger, revivee)}");
                 if (reviveeState.CurrentDraggerId == dragger.ProfileId) SetDragger(reviveeState, string.Empty);
                 EndLocalDraggerSession();
+                EndSession(reviveeId);
+                // Lost the claim or someone else took over; a revive this player started needs no notice.
+                if (reviveeState.CurrentReviverId != dragger.ProfileId)
+                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.DragReleased);
                 return;
             }
 
@@ -386,13 +432,16 @@ namespace KeepMeAlive.Features
                 return;
             }
 
-            string reason = (dragger.Position - revivee.Position).sqrMagnitude > MaxLeashDistance * MaxLeashDistance
-                ? "leash"
-                : BrokenStance(dragger, revivee);
+            string reason;
+            if ((dragger.Position - revivee.Position).sqrMagnitude > MaxLeashDistance * MaxLeashDistance) reason = "leash";
+            // The pickup locks the stance and hands; the rest is checked once the body is lifted.
+            else if (!IsLocalHoldingBody) return;
+            // The body rolled out of the dragger's hands, as their own ragdoll of it shows.
+            else if (BodyRagdoll.HasRolled(revivee.ProfileId)) reason = "rolled";
+            else reason = IsSnagged(revivee) ? "snagged" : BrokenStance(dragger, revivee);
             if (reason == null) return;
 
-            StopDrag(dragger, reason);
-            VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.DragReleased);
+            StopDrag(dragger, reason, notify: true);
         }
     }
 }

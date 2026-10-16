@@ -9,11 +9,17 @@ using KeepMeAlive.Helpers;
 namespace KeepMeAlive.Features
 {
     //====================[ BodyInteractableRuntime ]====================
-    // Central runtime orchestration for body interactable lifecycle and cache.
+    // Tracks attached body interactables and routes their actions.
     internal static class BodyInteractableRuntime
     {
         //====================[ Cache ]====================
         private static readonly Dictionary<string, BodyInteractable> Cache = new Dictionary<string, BodyInteractable>();
+
+        // Player objects an attach was started for this raid (a reconnect brings a new object under the same id).
+        private static readonly Dictionary<string, Player> Attempted = new Dictionary<string, Player>();
+        // Set once the raid has started; players spawning after that (join in progress, reconnects) are attached
+        // from EnsureAttached.
+        private static bool _raidStarted;
 
         public static bool HasAny => Cache.Count > 0;
 
@@ -62,6 +68,7 @@ namespace KeepMeAlive.Features
                 return;
             }
 
+            _raidStarted = true;
             RevivalDebugLog.LogDebug($"[AttachToRemoteHumans] HumanPlayers count={coopHandler.HumanPlayers.Count}");
             foreach (var player in coopHandler.HumanPlayers)
             {
@@ -76,10 +83,22 @@ namespace KeepMeAlive.Features
             }
         }
 
+        // Per tick for every non-AI player: a remote human that spawned after the raid started has no interactable.
+        public static void EnsureAttached(Player player)
+        {
+            if (!_raidStarted || player == null || player.IsYourPlayer || player.IsAI) return;
+            if (!(player is global::Fika.Core.Main.Players.ObservedPlayer)) return;
+            if (string.IsNullOrEmpty(player.ProfileId) || Attempted.TryGetValue(player.ProfileId, out var tried) && ReferenceEquals(tried, player)) return;
+            if (player.HealthController == null || !player.HealthController.IsAlive) return;
+
+            AttachToPlayer(player);
+        }
+
         public static void AttachToPlayer(Player player)
         {
             try
             {
+                if (player != null && !string.IsNullOrEmpty(player.ProfileId)) Attempted[player.ProfileId] = player;
                 if (player == null || player.gameObject == null)
                 {
                     Plugin.LogSource.LogError("AttachToPlayer: Player or transform is null");
@@ -87,7 +106,7 @@ namespace KeepMeAlive.Features
                 }
 
                 BodyInteractable.AttachToPlayer(player);
-                Plugin.LogSource.LogInfo($"Initiated BodyInteractable attachment routine for PlayerId {player.Id}");
+                RevivalDebugLog.LogDebug($"Initiated BodyInteractable attachment routine for PlayerId {player.Id}");
             }
             catch (Exception ex)
             {
@@ -120,6 +139,8 @@ namespace KeepMeAlive.Features
         {
             var live = new List<BodyInteractable>(Cache.Values);
             Cache.Clear();
+            Attempted.Clear();
+            _raidStarted = false;
             foreach (var bi in live)
             {
                 if (bi != null) UnityEngine.Object.Destroy(bi.gameObject);

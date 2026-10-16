@@ -21,22 +21,51 @@ namespace KeepMeAlive.Features
             EBodyPart.LeftArm, EBodyPart.RightArm, EBodyPart.LeftLeg, EBodyPart.RightLeg
         };
 
+        // The downing Kill() fires mid ApplyDamage; EFT then spreads the hit's overdamage, which can
+        // destroy the parts just restored. Track the local player's ApplyDamage nesting so the
+        // restore is repeated once the hit has fully resolved.
+        private static int _applyDamageDepth;
+        private static bool _restoreAfterDamage;
+
         //====================[ Public API ]====================
+        public static void BeginApplyDamage() => _applyDamageDepth++;
+
+        public static void EndApplyDamage(Player player)
+        {
+            if (_applyDamageDepth > 0) _applyDamageDepth--;
+            if (_applyDamageDepth > 0 || !_restoreAfterDamage) return;
+            _restoreAfterDamage = false;
+            if (RMSession.IsPlayerCritical(player.ProfileId)) RestoreVitalsToMinimum(player);
+        }
+
+        public static void ResetDamageTracking()
+        {
+            _applyDamageDepth = 0;
+            _restoreAfterDamage = false;
+        }
+
         // Restore destroyed body parts to 1 HP on downed entry (toggleable via config).
         public static void RestoreVitalsToMinimum(Player player)
         {
             if (player == null || !player.IsYourPlayer || player.ActiveHealthController is not { } hc) return;
+            if (_applyDamageDepth > 0) _restoreAfterDamage = true;
             try
             {
+                bool restoredAny = false;
                 for (int i = 0; i < TrackedBodyParts.Length; i++)
                 {
                     var part = TrackedBodyParts[i];
                     if (hc.IsBodyPartDestroyed(part) && hc.FullRestoreBodyPart(part))
                     {
+                        restoredAny = true;
                         float delta = 1f - hc.GetBodyPartHealth(part).Current;
                         if (delta < -0.01f) hc.ChangeHealth(part, delta, default);
                     }
                 }
+
+                // FullRestoreBodyPart builds a fresh HealthValue (DownMult 1); when god mode is already
+                // on, reapply the coefficient so the restored parts are protected like the rest.
+                if (restoredAny && hc.DamageCoeff <= 0f) hc.SetDamageCoeff(hc.DamageCoeff);
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] RestoreVitalsToMinimum error: {ex.Message}"); }
         }
@@ -50,26 +79,52 @@ namespace KeepMeAlive.Features
             {
                 if (player.ActiveHealthController != null)
                 {
+                    var hc = player.ActiveHealthController;
+                    GodMode.RunWithDamageEnabled(player, () =>
+                    {
+                        // Added directly: DoStun scales the duration by the player's eye protection
+                        // (thermals make it zero), so MaxStunSeconds would not be seconds.
+                        float stunSeconds = Math.Min(Cfg.Revival.CriticalStateSeconds, Cfg.Revival.MaxStunSeconds);
+                        if (Cfg.Revival.ApplyStunOnDowned && stunSeconds > 0f)
+                            hc.AddEffect<ActiveHealthController.Stun>(EBodyPart.Head, 0f, ActiveHealthController.Stun.StunBuildUpTime + stunSeconds, null, 1f);
+                    });
+
                     if (Cfg.Revival.ApplyContusionOnDowned)
                     {
-                        var hc = player.ActiveHealthController;
-                        TinnitusScope.Run(() => hc.DoContusion(Cfg.Revival.CriticalStateSeconds, 1f));
+                        // The contusion's tinnitus ducks and muffles the whole mix for 15 s; it would bury the cry
+                        // of going down, so it starts once the cry has been heard.
+                        var speaker = player.Speaker;
+                        float wait = speaker != null && speaker.Busy ? Mathf.Min(speaker.TimeLeft, MaxContusionWait) : 0f;
+                        if (wait > 0f)
+                            Plugin.StaticCoroutineRunner.StartCoroutine(ContusionAfter(player, wait, RMSession.GetPlayerState(player.ProfileId).ReviveCycleId));
+                        else
+                            ApplyDownedContusion(player);
                     }
-                    if (Cfg.Revival.ApplyStunOnDowned) player.ActiveHealthController.DoStun(Math.Min(Cfg.Revival.CriticalStateSeconds, Cfg.Revival.MaxStunSeconds), 1f);
                 }
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] ApplyCriticalEffects error: {ex.Message}"); }
         }
 
-        // Restore awareness values stored before downed-state modifiers were applied.
-        public static void RemoveRevivableState(Player player)
+        // Longest the downed contusion waits for the cry of going down (hit lines run up to about 2 s).
+        private const float MaxContusionWait = 2.5f;
+
+        // The downed contusion, unless this downed state has ended (or a new one begun) meanwhile.
+        private static IEnumerator ContusionAfter(Player player, float wait, int cycleId)
         {
-            try
-            {
-                if (player != null && RMSession.TryGetPlayerState(player.ProfileId, out var st) && st.HasStoredAwareness)
-                    PlayerRestorations.RestoreAwareness(player);
-            }
-            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] RemoveRevivableState error: {ex.Message}"); }
+            yield return new WaitForSeconds(wait);
+            if (player == null || player.HealthController is not { IsAlive: true }) yield break;
+            if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)
+                || st.State != RMState.BleedingOut || st.ReviveCycleId != cycleId) yield break;
+            try { ApplyDownedContusion(player); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] ContusionAfter error: {ex.Message}"); }
+        }
+
+        private static void ApplyDownedContusion(Player player)
+        {
+            var hc = player.ActiveHealthController;
+            if (hc == null) return;
+            GodMode.RunWithDamageEnabled(player, () =>
+                TinnitusScope.Run(() => hc.DoContusion(Cfg.Revival.CriticalStateSeconds, 1f)));
         }
     }
 }

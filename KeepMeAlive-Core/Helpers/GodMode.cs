@@ -46,6 +46,23 @@ namespace KeepMeAlive.Helpers
             }
         }
 
+        // EFT's DoContusion/DoStun/DoPain are no-ops while DamageCoeff is 0, so effects applied
+        // under god mode must briefly lift it. The previous coefficient is always restored.
+        public static void RunWithDamageEnabled(Player player, Action action)
+        {
+            var hc = player?.ActiveHealthController;
+            if (hc == null || hc.DamageCoeff > 0f)
+            {
+                action();
+                return;
+            }
+
+            float previous = hc.DamageCoeff;
+            hc.SetDamageCoeff(1f);
+            try { action(); }
+            finally { hc.SetDamageCoeff(previous); }
+        }
+
         public static void Disable(Player player)
         {
             if (player is null)

@@ -42,8 +42,8 @@ namespace KeepMeAlive.Helpers
             try { RemoveFractures(player, cfg); }
             catch (Exception ex) { Plugin.LogSource.LogError($"[PostReviveEffects] RemoveFractures error: {ex.Message}"); }
 
-            try { NormalizeTinnitusDuration(player); }
-            catch (Exception ex) { Plugin.LogSource.LogError($"[PostReviveEffects] NormalizeTinnitusDuration error: {ex.Message}"); }
+            try { ClearDownedContusion(player); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[PostReviveEffects] ClearDownedContusion error: {ex.Message}"); }
 
             if (applyDebuffs)
             {
@@ -61,7 +61,7 @@ namespace KeepMeAlive.Helpers
             => RevivePolicy.PostRevive(source).CooldownSeconds;
 
         // Returns the source-specific speed multiplier during invulnerability.
-        // Config percentages use 100 for normal speed; numeric values are honored as-is.
+        // Config percentages use 100 for normal speed; the server clamps them to 0-100.
         public static float GetInvulnSpeedMultiplier(ReviveSource source)
         {
             float pct = RevivePolicy.PostRevive(source).InvulnerabilitySpeedPercent;
@@ -167,8 +167,8 @@ namespace KeepMeAlive.Helpers
                 hc.ResidueEffectsWhere(FractureBodyParts[i], effect => effect is IFracture);
         }
 
-        // Resets active tinnitus/contusion to a fixed 10-second post-revive duration.
-        private static void NormalizeTinnitusDuration(Player player)
+        // Removes the downed-state contusion; ApplyDebuffs re-adds one only when the config asks for it.
+        private static void ClearDownedContusion(Player player)
         {
             var hc = player.ActiveHealthController;
             if (hc == null) return;
@@ -178,9 +178,7 @@ namespace KeepMeAlive.Helpers
                 return;
             }
 
-            // Replace any existing contusion/tinnitus with a short 10-second tail (ring: engine minimum, 15s).
             hc.ResidueEffectsWhere(EBodyPart.Common, effect => effect is IContusion);
-            TinnitusScope.Run(() => hc.DoContusion(10f, 1f));
         }
 
         //====================[ Post-Revival Debuffs ]====================
@@ -189,18 +187,22 @@ namespace KeepMeAlive.Helpers
             var hc = player.ActiveHealthController;
             if (hc == null) return;
 
-            if (cfg.ApplyContusionOnRevive)
+            // Post-revive invulnerability is already active here.
+            GodMode.RunWithDamageEnabled(player, () =>
             {
-                float dur = cfg.ContusionDurationSeconds;
-                TinnitusScope.Run(() => hc.DoContusion(dur, 1f));
-            }
+                if (cfg.ApplyContusionOnRevive && cfg.ContusionDurationSeconds > 0f)
+                {
+                    float dur = cfg.ContusionDurationSeconds;
+                    TinnitusScope.Run(() => hc.DoContusion(dur, 1f));
+                }
 
-            if (cfg.ApplyPainOnRevive)
-            {
-                // Applied to head; full-body sway/hands shake at default strength.
-                float painDur = cfg.PainDurationSeconds;
-                hc.DoPain(EBodyPart.Head, 0f, painDur, painDur * 0.5f);
-            }
+                if (cfg.ApplyPainOnRevive && cfg.PainDurationSeconds > 0f)
+                {
+                    // Applied to head; full-body sway/hands shake at default strength.
+                    float painDur = cfg.PainDurationSeconds;
+                    hc.DoPain(EBodyPart.Head, 0f, painDur, painDur * 0.5f);
+                }
+            });
         }
 
         //====================[ Cooldown Effect ]====================

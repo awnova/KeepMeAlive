@@ -107,6 +107,34 @@ namespace KeepMeAlive.Fika.Packets
         }
     }
 
+    // Owner -> everyone: the owner took their body back from the limp state (moved, or a revive started), with where
+    // they were and the yaw of their body (root) at that moment. Fika replicates position and look, never body yaw,
+    // and an observer's root stops turning while its body is ragdolled; observers roll the body onto this.
+    public struct GetUpPacket : INetSerializable
+    {
+        public string playerId;
+        public float  x, y, z;
+        public float  yaw;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            playerId = reader.GetString();
+            x        = reader.GetFloat();
+            y        = reader.GetFloat();
+            z        = reader.GetFloat();
+            yaw      = reader.GetFloat();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(playerId ?? "");
+            writer.Put(x);
+            writer.Put(y);
+            writer.Put(z);
+            writer.Put(yaw);
+        }
+    }
+
     //====================[ Revival Action Packets ]====================
     public struct SelfReviveStartPacket : INetSerializable
     {

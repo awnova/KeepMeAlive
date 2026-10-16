@@ -1,4 +1,4 @@
-//====================[ Imports ]====================
+﻿//====================[ Imports ]====================
 using BepInEx.Configuration;
 using UnityEngine;
 
@@ -22,6 +22,13 @@ namespace KeepMeAlive.Helpers
         public static ConfigEntry<float> DOWNED_DIM_STRENGTH;
         public static ConfigEntry<float> DOWNED_PULSE_MIN_STRENGTH;
         public static ConfigEntry<float> DOWNED_PULSE_OFFSET_MS;
+
+        // Downed body
+        public static ConfigEntry<float> SETTLE_SPEED;
+        public static ConfigEntry<float> MUSCLE_STRENGTH;
+
+        // Dragging
+        public static ConfigEntry<float> DRAG_LOOK_UP_LIMIT;
 
         // Debug / Diagnostics
         public static ConfigEntry<bool> ENABLE_DEBUG_LOGS;
@@ -97,6 +104,29 @@ namespace KeepMeAlive.Helpers
                 "Heartbeat Visual Offset (ms)",
                 0f,
                 new ConfigDescription("Shifts the visual pulse relative to the heartbeat sound. Positive = later, negative = earlier. Use if the pulse feels out of sync with the audio.", new AcceptableValueRange<float>(-100f, 150f), new ConfigurationManagerAttributes { IsAdvanced = true })
+            );
+
+            //====================[ Downed Body ]====================
+            SETTLE_SPEED = config.Bind(
+                "4. Downed Body",
+                "Settle Movement Threshold (m/s)",
+                0.2f,
+                new ConfigDescription("A body a teammate let go of counts as settled once every part of it moves slower than this (and turns slower than 5x this in rad/s); the settle animation then plays. Higher = decides sooner on a body still shifting, lower = waits until it is dead still. There is no time limit. With Enable Debug Logs on, the log shows the body's speed each tick while it is settling.", new AcceptableValueRange<float>(0.02f, 1f))
+            );
+
+            MUSCLE_STRENGTH = config.Bind(
+                "4. Downed Body",
+                "Muscle Strength",
+                120f,
+                new ConfigDescription("While a teammate drags the body and after they let go, the body is a ragdoll: gravity pulls it down and every muscle in it (spine, neck, head, arms and legs) contracts toward the muscle pose, the first frame of the settle animation. This is how hard they contract (a spring's stiffness against what the joint moves). Higher pulls the body into the pose harder against its weight and the floor, lower leaves it limper. The muscles are applied once per frame, so a stiffness above about 140 (about 35 on a slow frame) is held down to a stable value: past that the setting has no further effect. Read every frame, so it can be changed live.", new AcceptableValueRange<float>(5f, 150f))
+            );
+
+            //====================[ Dragging ]====================
+            DRAG_LOOK_UP_LIMIT = config.Bind(
+                "5. Dragging",
+                "Look Up Limit (degrees)",
+                40f,
+                new ConfigDescription("How far above the horizon you can look while you pick up and drag a teammate (0 = level, 90 = straight up). Local only. Takes effect on the next drag.", new AcceptableValueRange<float>(0f, 90f))
             );
 
             //====================[ Debug ]====================

@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using Comfort.Common;
 using EFT;
-using KeepMeAlive.Components;
 
 namespace KeepMeAlive.Helpers
 {
@@ -64,53 +63,6 @@ namespace KeepMeAlive.Helpers
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[PlayerRestorations] RestorePlayerWeapon error: {ex}");
-            }
-        }
-
-        //====================[ Awareness Restoration ]====================
-        public static void SetAwarenessZero(Player player)
-        {
-            if (player is null)
-            {
-                return;
-            }
-            
-            try
-            {
-                var st = RMSession.GetPlayerState(player.ProfileId);
-                if (!st.HasStoredAwareness)
-                {
-                    st.OriginalAwareness = player.Awareness;
-                    st.HasStoredAwareness = true;
-                }
-                
-                player.Awareness = 0f;
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[PlayerRestorations] SetAwarenessZero: {ex.Message}");
-            }
-        }
-
-        public static void RestoreAwareness(Player player)
-        {
-            if (player is null)
-            {
-                return;
-            }
-            
-            try
-            {
-                var st = RMSession.GetPlayerState(player.ProfileId);
-                if (st.HasStoredAwareness)
-                {
-                    player.Awareness = st.OriginalAwareness;
-                    st.HasStoredAwareness = false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[PlayerRestorations] RestoreAwareness: {ex.Message}");
             }
         }
     }
