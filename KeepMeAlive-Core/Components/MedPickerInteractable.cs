@@ -5,8 +5,6 @@ using EFT.InventoryLogic;
 using EFT.UI;
 using System;
 using UnityEngine;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 
 namespace KeepMeAlive.Components
 {

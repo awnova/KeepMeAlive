@@ -1,7 +1,6 @@
 //====================[ Imports ]====================
 using System.Reflection;
 using HarmonyLib;
-using KeepMeAlive.Features;
 using SPT.Reflection.Patching;
 using UnityEngine;
 

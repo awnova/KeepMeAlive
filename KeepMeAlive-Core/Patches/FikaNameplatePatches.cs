@@ -3,8 +3,6 @@ using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
-using KeepMeAlive.Components;
-using KeepMeAlive.Helpers;
 using Fika.Core;
 using Fika.Core.Main.Components;
 using Fika.Core.Main.Players;

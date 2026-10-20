@@ -3,7 +3,6 @@ using System.Reflection;
 using EFT;
 using Fika.Core.Main.Players;
 using HarmonyLib;
-using KeepMeAlive.Features;
 using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches

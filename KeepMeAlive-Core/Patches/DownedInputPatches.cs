@@ -6,9 +6,6 @@ using EFT;
 using EFT.InventoryLogic;
 using EFT.UI;
 using HarmonyLib;
-using KeepMeAlive.Components;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using Fika.Core.Main.Players;
 using SPT.Reflection.Patching;
 
@@ -149,7 +146,9 @@ namespace KeepMeAlive.Patches
                 if (!RMSession.TryGetPlayerState(__instance.Player.ProfileId, out var st)) return true;
 
                 bool block = st.IsSilentInventoryAnimActive
-                             || (st.IsCritical && command == EFT.InputSystem.ECommand.ToggleInventory);
+                             || (st.IsCritical && command == EFT.InputSystem.ECommand.ToggleInventory)
+                             // The spectate keys (fire, aim, N) are also the game's own.
+                             || (DownedSpectate.IsActive && DownedSpectate.BlocksCommand(command));
                 if (!block) return true;
 
                 __result = EFT.InputSystem.InputNode.ETranslateResult.BlockAll;
@@ -158,6 +157,33 @@ namespace KeepMeAlive.Patches
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[SilentInvCommandBlock] error: {ex.Message}");
+                return true;
+            }
+        }
+    }
+
+    //====================[ DraggerReviveInputPatch ]====================
+    // The interact key pressed while holding a dragged body starts its revive (the body has no context menu). The press is
+    // consumed; the release is not, so the game's own cancel ends the hold.
+    internal class DraggerReviveInputPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(EftGamePlayerOwner), nameof(EftGamePlayerOwner.TranslateCommand));
+
+        [PatchPrefix]
+        private static bool Prefix(EftGamePlayerOwner __instance, EFT.InputSystem.ECommand command, ref EFT.InputSystem.InputNode.ETranslateResult __result)
+        {
+            try
+            {
+                if (command != EFT.InputSystem.ECommand.BeginInteracting || __instance?.Player == null) return true;
+                if (!DownedDragController.TryBeginReviveHold(__instance)) return true;
+
+                __result = EFT.InputSystem.InputNode.ETranslateResult.BlockAll;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[DraggerReviveInput] error: {ex.Message}");
                 return true;
             }
         }

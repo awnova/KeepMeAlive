@@ -28,13 +28,13 @@ KeepMeAlive creates its server and client configuration files the first time eac
 
 ## Play
 
-When downed, hold the self-revive key (default `F`) to attempt a self-revive. A teammate can interact with your downed PMC to revive you. The server controls revive timing, item requirements, life costs, and recovery effects.
+When downed, hold the self-revive key (default `F`) to attempt a self-revive. A teammate looking at your downed PMC gets two options: **Support** and **Loot**. Tapping Support starts a drag; holding it starts a defibrillator revive. The server controls revive timing, item requirements, life costs, and recovery effects.
 
 When you go down, your body falls limp. Move to recover and crawl while downed. Teammates see your body fall; your own player is not ragdolled.
 
 To give up, hold the configured key (default `Backspace`) for two seconds while downed and not being revived.
 
-A teammate can choose **Drag** on your downed PMC to pull you along. The dragger crouches, puts away their weapon, and holds you by the shoulders. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, go down, or your body rolls out of their hands. They can also use **Release**, and a revive by anyone else ends the drag. The dragger can revive the body they are holding: their right hand takes a stim pen from their chest and holds it in your shoulder for the whole revive while the left keeps hold, then they put you down when it is done (a cancelled revive just puts the pen away and the drag carries on). You stay limp where you are released until you move.
+A teammate can tap **Support** on your downed PMC to drag you along. The dragger crouches, puts away their weapon, and holds you by the shoulders. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, go down, or your body rolls out of their hands. A revive by anyone else also ends the drag, and a body being dragged has no interaction menu for anyone. The dragger can revive the body they are holding by holding the interact key (shown on the bottom strip as "Hold [key] Revive"): their right hand takes a stim pen from their chest and holds it in your shoulder for the whole revive while the left keeps hold, then they put you down when it is done (a cancelled revive just puts the pen away and the drag carries on). You stay limp where you are released until you move.
 
 The default revive item is the item with template ID `5c052e6986f7746b207bc3c9`. By default, the server offers it from Therapist for 200,000 roubles at loyalty level 2.
 

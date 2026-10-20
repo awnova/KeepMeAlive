@@ -1,4 +1,4 @@
-﻿//====================[ Imports ]====================
+//====================[ Imports ]====================
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -6,9 +6,6 @@ using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using EFT.UI;
-using KeepMeAlive.Features;
-using KeepMeAlive.Fika;
-using KeepMeAlive.Helpers;
 using UnityEngine;
 
 namespace KeepMeAlive.Components
@@ -85,14 +82,64 @@ namespace KeepMeAlive.Components
             // Disable bone colliders while the loot screen is open.
             if (_isLootScreenOpen)
             {
+                ClearLookHint();
                 SetCollidersEnabled(false);
                 return;
             }
 
             SetCollidersEnabled(true);
 
+            UpdateLookHint();
+
             // While the picker is open, proxy hits resolve to it and it refreshes its own list.
             if (!HasActivePicker) RefreshListIfActionsChanged();
+        }
+
+        // The bottom-strip banner while the local player looks at this body: what a tap and a hold of interact do.
+        private bool _hintShown;
+        private float _nextHintRefresh;
+
+        private void UpdateLookHint()
+        {
+            var viewer = _viewerOwner != null ? _viewerOwner.Player : null;
+            bool looking = viewer != null && !_isLootScreenOpen && !HasActivePicker && ReferenceEquals(viewer.InteractableObject, this);
+            if (!looking)
+            {
+                ClearLookHint();
+                return;
+            }
+            // The hint describes Support only: blank while another entry (Loot) is the highlighted one.
+            // Checked every frame and outside the throttle so scrolling back restores it at once.
+            var selected = _viewerOwner.AvailableInteractionState.Value?.SelectedAction;
+            if (selected != null && selected.Name != PlayerFacingMessages.Interaction.SupportAction)
+            {
+                ClearLookHint();
+                _nextHintRefresh = 0f;
+                return;
+            }
+
+            if (Time.time < _nextHintRefresh) return;
+            _nextHintRefresh = Time.time + SignaturePollInterval;
+
+            RMSession.TryGetPlayerState(Revivee.ProfileId, out var st);
+            bool offered = st != null && !RMSession.IsPlayerCritical(viewer.ProfileId)
+                           && st.State == RMState.BleedingOut && !st.IsBeingDragged && !st.IsBeingRevived && !st.IsSelfReviving
+                           && !CrouchHoldState.IsActive(viewer);
+            if (!offered)
+            {
+                ClearLookHint();
+                return;
+            }
+
+            Hud.SetLookHint(DownedDragController.CanStartDrag(viewer, Revivee, st), CanTeamRevive(viewer, st));
+            _hintShown = true;
+        }
+
+        private void ClearLookHint()
+        {
+            if (!_hintShown) return;
+            _hintShown = false;
+            Hud.ClearLookHint();
         }
 
         // Refresh the list when its actions change.
@@ -129,15 +176,15 @@ namespace KeepMeAlive.Components
             // Prevent multiple attachments if PlayerId is set multiple times
             if (player.gameObject.GetComponentInChildren<BodyInteractable>() != null) return null;
 
-            // We use a coroutine to wait for bones, and also to wait until after Fika attaches
+            // I wait for bones and Fika attachment in a coroutine.
             Plugin.StaticCoroutineRunner.StartCoroutine(WaitForBonesAndBuild(player));
-            return null; // Return null synchronously, we cache it dynamically later anyway
+            return null; // I cache the result after attachment.
         }
 
         private static IEnumerator WaitForBonesAndBuild(Player player)
         {
             // Wait for bones to be ready and Profile to be fully assigned; stop if the player
-            // object is destroyed (left the raid) while we wait.
+            // object is destroyed (left the raid) while I wait.
             while (player != null && (player.PlayerBones == null || player.PlayerBones.RootJoint == null || player.Profile == null || string.IsNullOrEmpty(player.ProfileId)))
             {
                 yield return null;
@@ -205,7 +252,7 @@ namespace KeepMeAlive.Components
                 bi._proxyObjects.Add(childGo);
             }
 
-            Features.BodyInteractableRuntime.Register(player.ProfileId, bi);
+            Gameplay.Downed.BodyInteractableRuntime.Register(player.ProfileId, bi);
             go.SetActive(true);
 
             RevivalDebugLog.LogDebug($"[BodyInteractable] Created {bi._colliders.Count} mirrored colliders for player {player.ProfileId}");
@@ -278,6 +325,49 @@ namespace KeepMeAlive.Components
 
         //====================[ Logic & Interaction ]====================
 
+        // The interact key is pressed when the action runs and released to cancel the hold, so Support starts a short
+        // hold: let go inside it and it was a tap; still held when it ends and it becomes the revive hold.
+        private const float SupportTapWindow = 0.3f;
+
+        internal static bool CanTeamRevive(Player reviver, RMPlayer reviveeState) =>
+            RevivePolicy.IsEnabled(ReviveSource.Team)
+            && (Cfg.Development.NoReviveItemRequired || ModUtils.HasReviveItem(reviver))
+            && reviveeState.LivesRemaining >= Cfg.Revival.TeamReviveLivesCost;
+
+        public void OnSupport(GamePlayerOwner owner)
+        {
+            if (Revivee is null || owner?.Player is null) return;
+            if (CrouchHoldState.IsActive(owner.Player)) return;
+
+            // Standing still is needed to hold; otherwise the press is a tap.
+            if (!CrouchHoldState.Begin(owner.Player, SupportTapWindow, held => OnSupportWindowEnd(owner, held)))
+                DownedDragController.StartDrag(owner, Revivee);
+        }
+
+        private void OnSupportWindowEnd(GamePlayerOwner owner, bool held)
+        {
+            if (Revivee == null || owner?.Player == null || RMSession.IsPlayerCritical(owner.Player.ProfileId)) return;
+            if (!held) { DownedDragController.StartDrag(owner, Revivee); return; }
+            RequestRevive(owner);
+        }
+
+        // Starts the revive hold, or says why it can't be done.
+        public void RequestRevive(GamePlayerOwner owner)
+        {
+            if (Revivee == null || owner?.Player == null || RMSession.IsPlayerCritical(owner.Player.ProfileId)) return;
+
+            var st = RMSession.GetPlayerState(Revivee.ProfileId);
+            if (st.State != RMState.BleedingOut) return;
+            if (!RevivePolicy.IsEnabled(ReviveSource.Team))
+                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.TeamReviveDisabled);
+            else if (!Cfg.Development.NoReviveItemRequired && !ModUtils.HasReviveItem(owner.Player))
+                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NoReviveItemFound);
+            else if (st.LivesRemaining < Cfg.Revival.TeamReviveLivesCost)
+                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NotEnoughLives(Cfg.Revival.TeamReviveLivesCost));
+            else
+                OnRevive(owner);
+        }
+
         public void OnRevive(GamePlayerOwner owner)
         {
             if (Revivee is null || owner?.Player is null) return;
@@ -298,13 +388,13 @@ namespace KeepMeAlive.Components
                 reviverId = owner.Player.ProfileId
             };
 
-            if (!CrouchHoldState.Begin(owner.Player, ReviveHoldTime, handler.Complete))
+            if (!CrouchHoldState.Begin(owner.Player, ReviveHoldTime, handler.Complete, Revivee))
             {
                 VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.CannotReviveWhileMoving);
                 return;
             }
 
-            VFX_UI.ObjectivePanel(Color.cyan, PlayerFacingMessages.Interaction.RevivingObjective, ReviveHoldTime);
+            Hud.ShowHold(Hud.HoldKind.ReviveTeammate, ReviveHoldTime, ModUtils.GetPlayerDisplayName(Revivee.ProfileId));
             // Claims locally too (no loopback), so this machine also drops any drag of the body.
             FikaBridge.ClaimTeamHelp(Revivee.ProfileId, owner.Player.ProfileId);
             // The defibrillator comes out for the hold (the weapon comes back when it ends), only with the claim:
@@ -341,49 +431,30 @@ namespace KeepMeAlive.Components
 
             RMSession.TryGetPlayerState(Revivee.ProfileId, out var reviveeState);
 
-            // During active revive progress we intentionally expose no actions.
+            // I expose no actions during revive progress.
             // This prevents both revive/search and category picker interactions while settling.
             if (reviveeState?.State == RMState.Reviving) return actions;
 
+            // A body in someone's hands has no menu: the dragger revives it from their own prompt (DownedDragController), and
+            // nobody else can step in.
+            if (reviveeState != null && reviveeState.IsBeingDragged) return actions;
+
             if (reviveeState?.State == RMState.BleedingOut)
             {
-                if (RevivePolicy.IsEnabled(ReviveSource.Team))
+                // Support: tap drags, hold revives.
+                actions.Actions.Add(new InteractionAction
                 {
-                    bool canRevive = Cfg.Development.NoReviveItemRequired || ModUtils.HasReviveItem(owner.Player);
-                    bool hasLives = reviveeState.LivesRemaining >= Cfg.Revival.TeamReviveLivesCost;
-                    actions.Actions.Add(new InteractionAction
-                    {
-                        Action = () => OnRevive(owner),
-                        Name = PlayerFacingMessages.Interaction.ReviveAction,
-                        Disabled = !canRevive || !hasLives
-                    });
-                }
-
-                if (DownedDragController.IsLocalDraggingBody(Revivee.ProfileId))
-                {
-                    actions.Actions.Add(new InteractionAction
-                    {
-                        Action = () => DownedDragController.StopDrag(owner.Player, "menu"),
-                        Name = PlayerFacingMessages.Interaction.ReleaseAction,
-                        Disabled = false
-                    });
-                }
-                else if (!reviveeState.IsBeingDragged)
-                {
-                    actions.Actions.Add(new InteractionAction
-                    {
-                        Action = () => DownedDragController.StartDrag(owner, Revivee),
-                        Name = PlayerFacingMessages.Interaction.DragAction,
-                        Disabled = !DownedDragController.CanStartDrag(owner.Player, Revivee, reviveeState)
-                    });
-                }
+                    Action = () => OnSupport(owner),
+                    Name = PlayerFacingMessages.Interaction.SupportAction,
+                    Disabled = !DownedDragController.CanStartDrag(owner.Player, Revivee, reviveeState) && !CanTeamRevive(owner.Player, reviveeState)
+                });
 
                 if (Cfg.TeamHealing.AllowLootDownedPlayers)
                 {
                     actions.Actions.Add(new InteractionAction
                     {
                         Action = () => OnLootDowned(owner),
-                        Name = PlayerFacingMessages.Interaction.SearchAction,
+                        Name = PlayerFacingMessages.Interaction.LootAction,
                         Disabled = false
                     });
                 }
@@ -467,6 +538,7 @@ namespace KeepMeAlive.Components
 
         private void OnDestroy()
         {
+            ClearLookHint();
             var owner = _lootOwner;
             EndLootSession();
             try { owner?.CloseInventoryIfOpen(); } catch { }
@@ -536,7 +608,7 @@ namespace KeepMeAlive.Components
 
             public void Complete(bool result)
             {
-                VFX_UI.HideObjectivePanel();
+                Hud.HideHold();
                 // Completed: the shock lands now and the paddles are put away; cancelled: they go at once.
                 DefibHands.End(owner.Player, result);
 

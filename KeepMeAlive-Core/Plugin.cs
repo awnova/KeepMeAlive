@@ -1,4 +1,4 @@
-﻿//====================[ Imports ]====================
+//====================[ Imports ]====================
 using BepInEx;
 using BepInEx.Bootstrap;
 using BepInEx.Logging;
@@ -6,9 +6,6 @@ using System.Collections.Generic;
 using HarmonyLib;
 using EFT.HealthSystem;
 using Fika.Core.Main.Utils;
-using KeepMeAlive.Fika;
-using KeepMeAlive.Helpers;
-using KeepMeAlive.Patches;
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -83,6 +80,7 @@ namespace KeepMeAlive
             new TeamHealDoMedEffectPatch().Enable();
             new TeamHealUseTimePatch().Enable();
             new SilentInventoryCommandBlockPatch().Enable();
+            new DraggerReviveInputPatch().Enable();
             new TinnitusCapPatch().Enable();
             new DownedBreathPatch().Enable();
             new LocalOnlyPhrasePatch().Enable();

@@ -3,7 +3,6 @@ using System.Reflection;
 using EFT.HealthSystem;
 using EFT.InventoryLogic;
 using HarmonyLib;
-using KeepMeAlive.Features;
 using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches

@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using EFT;
 using HarmonyLib;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches

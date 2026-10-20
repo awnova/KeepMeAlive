@@ -4,9 +4,6 @@ using System.Reflection;
 using EFT;
 using EFT.Communications;
 using HarmonyLib;
-using KeepMeAlive.Components;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 using UnityEngine;
 

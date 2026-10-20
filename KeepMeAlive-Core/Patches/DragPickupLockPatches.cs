@@ -5,8 +5,6 @@ using System.Reflection;
 using EFT;
 using EFT.InputSystem;
 using HarmonyLib;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 using UnityEngine;
 
@@ -26,7 +24,8 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance != null && __instance.IsYourPlayer && DownedDragController.IsPickupLocked) direction = Vector2.zero;
+                if (__instance != null && __instance.IsYourPlayer && DownedDragController.IsPickupLocked)
+                    direction = Vector2.zero;
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DragPickupMove] error: {ex.Message}"); }
         }

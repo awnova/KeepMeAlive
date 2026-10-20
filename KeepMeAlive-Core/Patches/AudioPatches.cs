@@ -6,8 +6,6 @@ using EFT;
 using EFT.HealthSystem;
 using Fika.Core.Main.Players;
 using HarmonyLib;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 using UnityEngine;
 

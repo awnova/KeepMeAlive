@@ -4,9 +4,6 @@ using System.Reflection;
 using HarmonyLib;
 using EFT;
 using EFT.HealthSystem;
-using KeepMeAlive.Components;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches
@@ -76,7 +73,8 @@ namespace KeepMeAlive.Patches
     }
 
     //====================[ RagdollDeathHandoffPatch ]====================
-    // Give the remote body back to EFT before the corpse is created, leaving its bones in the pose on screen.
+    // Give a taken-over body (the local player's own included) back to EFT before the corpse is created, leaving its
+    // bones in the pose on screen.
     internal class RagdollDeathHandoffPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod() =>
@@ -87,7 +85,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance == null || __instance.IsYourPlayer || __instance.IsAI) return;
+                if (__instance == null || __instance.IsAI) return;
                 BodyRagdoll.ReleaseForDeath(__instance);
             }
             catch (Exception ex)

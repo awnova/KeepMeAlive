@@ -6,9 +6,6 @@ using EFT;
 using EFT.Communications;
 using EFT.InventoryLogic;
 using HarmonyLib;
-using KeepMeAlive.Components;
-using KeepMeAlive.Features;
-using KeepMeAlive.Helpers;
 using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches
