@@ -81,9 +81,9 @@ namespace KeepMeAlive.Gameplay.Downed
                     GodMode.RunWithDamageEnabled(player, () =>
                     {
                         // Added directly: DoStun scales the duration by the player's eye protection
-                        // (thermals make it zero), so MaxStunSeconds would not be seconds.
-                        float stunSeconds = Math.Min(Cfg.Revival.CriticalStateSeconds, Cfg.Revival.MaxStunSeconds);
-                        if (Cfg.Revival.ApplyStunOnDowned && stunSeconds > 0f)
+                        // (thermals make it zero), so the stun length would not be seconds.
+                        const float stunSeconds = DownedStunSeconds;
+                        if (Cfg.Revival.ApplyStunOnDowned)
                             hc.AddEffect<ActiveHealthController.Stun>(EBodyPart.Head, 0f, ActiveHealthController.Stun.StunBuildUpTime + stunSeconds, null, 1f);
                     });
 
@@ -102,6 +102,9 @@ namespace KeepMeAlive.Gameplay.Downed
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] ApplyCriticalEffects error: {ex.Message}"); }
         }
+
+        // How long the stun that blacks out the screen on going down lasts (full strength for the first fifth, then it fades).
+        private const float DownedStunSeconds = 15f;
 
         // Longest the downed contusion waits for the cry of going down (hit lines run up to about 2 s).
         private const float MaxContusionWait = 2.5f;

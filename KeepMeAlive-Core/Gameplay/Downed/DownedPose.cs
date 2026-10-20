@@ -57,6 +57,8 @@ namespace KeepMeAlive.Gameplay.Downed
         // The clip played first (the standing or the crouched fall, or the settle; null when joining on the loop or once
         // getting up) and then the loop; all share the rig.
         private BakedClip _fall;
+        // Whether _fall is a fall (a body going down), not the settle clip.
+        private bool _playsFall;
         private BakedClip _loop;
         private ClipRig _rig;
         // Character-frame rotations of the rig's bones, filled each frame.
@@ -87,6 +89,10 @@ namespace KeepMeAlive.Gameplay.Downed
 
         // Playing the roll onto the front, and whether it has finished (the body lies prone on the player).
         public bool IsGettingUp => _getUp != null;
+
+        // The body is still going down (the fall is playing; not the settle clip, not the loop).
+        // A pose whose playback failed is switched off and its time no longer runs: it is not still falling.
+        public bool IsPlayingFall => enabled && _playsFall && _fall != null && _getUp == null && _elapsed < _fall.Duration;
         public bool GetUpDone => _getUp != null && _elapsed >= _getUp.Clip.Duration;
 
         //====================[ Start ]====================
@@ -123,6 +129,75 @@ namespace KeepMeAlive.Gameplay.Downed
             var pose = TryStart(player, pool, Opening.Fall, rec.Clip, rec);
             if (pose != null) pose._elapsed = Mathf.Max(0f, Time.time - rec.Start);
             return pose;
+        }
+
+        //====================[ Recorded Fall ]====================
+        // An observer's fall is the owner's: the clip, the pelvis and the yaw as the owner had them going down
+        // (BleedingOutPacket), not what this peer sees of the body, which is later by this observer's own delay and has
+        // a root yaw Fika never sent. Every peer then plays the same fall from the same place.
+        // A record older than this (s) belongs to an earlier downing (or the packet never came): the body is read
+        // as it was before.
+        private const float RecordValidSeconds = 30f;
+
+        private static bool HasDownRecord(Player player, out RMPlayer st)
+        {
+            st = null;
+            return !player.IsYourPlayer && RMSession.TryGetPlayerState(player.ProfileId, out st)
+                   && Time.time - st.DownFallTime < RecordValidSeconds;
+        }
+
+        // The fall the owner recorded, while it is still playing (null once it is over, or when they went down lying).
+        private static bool TryGetRecordedFall(Player player, out DownedRagdollController.LocalFall rec)
+        {
+            rec = null;
+            if (!HasDownRecord(player, out var st) || st.DownFallKind == 0) return false;
+            var clip = st.DownFallKind == 2 ? BakedClip.CrouchFall : BakedClip.Fall;
+            if (clip == null || Time.time - st.DownFallTime >= clip.Duration) return false;
+            rec = new DownedRagdollController.LocalFall
+            {
+                PlayerId = player.ProfileId,
+                Clip = clip,
+                Start = st.DownFallTime,
+                Pelvis = st.DownPelvis,
+                Facing = global::KeepMeAlive.Animation.Shared.MathUtil.Yaw(st.DownYaw)
+            };
+            return true;
+        }
+
+        // Whether this observer is to play the owner's fall (so a body that already shows prone is not taken as down
+        // already lying).
+        public static bool HasRecordedFall(Player player) => TryGetRecordedFall(player, out _);
+
+        // The fall of a body going down on an observer: the owner's when there is one, else read from the body.
+        public static DownedPose TryStartFallFor(Player player, PlayerPoolObject pool)
+        {
+            if (!HasDownRecord(player, out _)) return TryStartFall(player, pool);
+            if (!TryGetRecordedFall(player, out var rec)) return null;
+
+            var pose = TryStart(player, pool, Opening.Fall, rec.Clip, rec);
+            if (pose != null) pose._elapsed = Mathf.Max(0f, Time.time - rec.Start);
+            return pose;
+        }
+
+        // Plays the loop on a body that is to lie on its back where the one who let go of it said (DropRestPacket), however it
+        // lies here (on its front, as this peer's physics left it): blended in from the pose on screen, turned and slid onto
+        // that place. Null when there is nothing to play.
+        public static DownedPose TryStartLyingAt(Player player, PlayerPoolObject pool, Vector3 pelvis, float facingYaw)
+        {
+            var pose = TryStart(player, pool, Opening.Loop, null);
+            if (pose == null) return null;
+            pose.PlaceAt(pelvis, facingYaw);
+            return pose;
+        }
+
+        // Puts the resting body's pelvis (level) on a place and turns it to a facing; the ground follow keeps the height.
+        private void PlaceAt(Vector3 pelvis, float facingYaw)
+        {
+            Quaternion facing = global::KeepMeAlive.Animation.Shared.MathUtil.Yaw(facingYaw);
+            _ground.SurfaceDirection = facing * Quaternion.Inverse(_facing) * _ground.SurfaceDirection;
+            _facing = facing;
+            Vector3 offset = _facing * AnchorReferenceLocal;
+            _pelvisStart = new Vector3(pelvis.x - offset.x, _pelvisStart.y, pelvis.z - offset.z);
         }
 
         // Plays the settle clip and then the loop on a ragdoll that has come to rest on its back (after a drag), placed
@@ -192,6 +267,7 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             _player = player;
             _fall = fall ?? intro;
+            _playsFall = fall != null;
             _loop = loop;
             _rig = rig;
             _pose = new Quaternion[rig.Count];
@@ -354,6 +430,94 @@ namespace KeepMeAlive.Gameplay.Downed
             return pelvis;
         }
 
+        //====================[ Root Anchor ]====================
+        // The body lies where the player's root is, on every peer. The pose is placed in the world once (from the
+        // body it started on) and Fika moves the player's root on its own afterwards, by the owner's knockback or
+        // whatever this peer saw of the player, each later than the owner by that peer's own delay: left alone, the
+        // body ends up off the real root (the hit colliders, the revive prompt) and off every other peer's copy.
+        // So once the fall is over the pelvis is eased onto the root plus where it lies from the root (the owner
+        // recorded it going down), level only: the ground follow keeps the height.
+        private const float AnchorFollowRate = 6f;
+        // The anchor holds while the root is still moving faster than this (m/s): the owner's knockback is still arriving
+        // (each peer sees it late), and easing onto where the root is now would slide the body back first.
+        private const float AnchorRootRestSpeed = 0.1f;
+        // A yaw closer than this to the declared one (deg) is the declared one.
+        private const float AnchorYawTolerance = 0.05f;
+
+        // The root as last seen, for its speed.
+        private Vector3 _rootSeen;
+        private bool _hasRootSeen;
+
+        // The lying reference frame's pelvis (skeleton metres, character frame): where _pelvisStart + _facing * this is
+        // the pelvis of the body at rest, before the loop's own small sway.
+        private Vector3 AnchorReferenceLocal => _loop.Pelvis[0] * _rig.Scale;
+
+        // The pose's facing (yaw) for a body whose spine (pelvis to shoulders) points at spineYaw: the loop's own spine,
+        // in its character frame, turned onto it. False when there is no loop or its spine cannot be read.
+        public static bool TryFacingFromSpine(float spineYaw, out float facing)
+        {
+            facing = 0f;
+            var loop = BakedClip.Loop;
+            if (loop == null) return false;
+            float clipSpine = loop.SpineYaw(0);
+            if (float.IsNaN(clipSpine)) return false;
+            facing = spineYaw - clipSpine;
+            return true;
+        }
+
+        // Turns the body about its resting pelvis onto a yaw, the ground follow's slope direction with it (as the roll does).
+        private void TurnAboutPelvis(float yaw)
+        {
+            Vector3 local = AnchorReferenceLocal;
+            Vector3 pelvis = _pelvisStart + _facing * local;
+            Quaternion facing = global::KeepMeAlive.Animation.Shared.MathUtil.Yaw(yaw);
+            _ground.SurfaceDirection = facing * Quaternion.Inverse(_facing) * _ground.SurfaceDirection;
+            _facing = facing;
+            _pelvisStart = pelvis - _facing * local;
+        }
+
+        private void AnchorToRoot()
+        {
+            // Not while the fall (or the settle) plays, nor over the roll: it aims at the root itself.
+            if (_getUp != null || (_fall != null && _elapsed < _fall.Duration)) return;
+            if (_player == null || !RMSession.TryGetPlayerState(_player.ProfileId, out var st)) return;
+
+            Vector3 want;
+            if (st.HasDropRest)
+            {
+                // Put down after a drag: the declared rest itself, on every peer the same, whenever this peer sees the
+                // owner's real body arrive under it (DownedRagdollController moves it there). Every peer's ragdoll settled
+                // turned its own way; all ease onto the declared yaw.
+                if (Mathf.Abs(Mathf.DeltaAngle(_facing.eulerAngles.y, st.DropFacingYaw)) > AnchorYawTolerance)
+                    TurnAboutPelvis(Mathf.LerpAngle(_facing.eulerAngles.y, st.DropFacingYaw, global::KeepMeAlive.Animation.Shared.MathUtil.Follow(AnchorFollowRate)));
+                want = st.DropRestPelvis;
+            }
+            else if (!string.IsNullOrEmpty(st.DropDeclarerId)
+                     && Time.time - st.DropReleaseTime < DownedDragController.DropRestWaitSeconds)
+            {
+                // Let go of, and whoever let go has not said where it came to rest yet: it lies where it settled here.
+                return;
+            }
+            else
+            {
+                if (!st.HasLyingOffset) return;
+
+                // Wait for the root to come to rest (it is the owner's knockback arriving, late by this peer's delay).
+                Vector3 root = _player.Position;
+                float dt = Time.deltaTime;
+                bool moving = !_hasRootSeen || (dt > 0f && (root - _rootSeen).magnitude / dt > AnchorRootRestSpeed);
+                _rootSeen = root;
+                _hasRootSeen = true;
+                if (moving) return;
+
+                want = root + _facing * new Vector3(st.LyingOffset.x, 0f, st.LyingOffset.y);
+            }
+            Vector3 have = _pelvisStart + _facing * AnchorReferenceLocal;
+            Vector3 gap = want - have;
+            gap.y = 0f;
+            _pelvisStart += gap * global::KeepMeAlive.Animation.Shared.MathUtil.Follow(AnchorFollowRate);
+        }
+
         //====================[ Playback ]====================
         private void LateUpdate()
         {
@@ -362,6 +526,7 @@ namespace KeepMeAlive.Gameplay.Downed
             CaptureAnimatedChest();
             try
             {
+                AnchorToRoot();
                 Pose(_elapsed);
                 _motion.Record();
                 FollowCamera(null);

@@ -74,6 +74,15 @@ namespace KeepMeAlive.Networking.Fika
             playerState.FinalizedReviveCycleId = -1;
             playerState.CriticalTimer = packet.timeRemaining;
             playerState.LivesRemaining = packet.livesRemaining;
+            // How the body went down: the ragdoll that comes next plays the owner's fall from the owner's place.
+            playerState.DownFallKind = packet.fallKind;
+            playerState.DownPelvis = new Vector3(packet.pelvisX, packet.pelvisY, packet.pelvisZ);
+            playerState.DownYaw = packet.yaw;
+            playerState.DownFallTime = Time.time;
+            playerState.LyingOffset = new Vector2(packet.offsetX, packet.offsetZ);
+            playerState.HasLyingOffset = true;
+            playerState.HasDropRest = false;
+            playerState.DropDeclarerId = string.Empty;
             // Limp until the owner's resync says they moved.
             playerState.IsLimp = true;
             playerState.ClearReviveSession();
@@ -401,8 +410,8 @@ namespace KeepMeAlive.Networking.Fika
         private static void OnGetUp(GetUpPacket packet, NetPeer peer)
         {
             if (IsLocalPlayer(packet.playerId)) return;
-            RevivalDebugLog.LogNetworkTrace($"[Packet] GetUp: {packet.playerId} at ({packet.x:F2}, {packet.y:F2}, {packet.z:F2}) yaw {packet.yaw:F0}");
-            DownedRagdollController.OnRemoteGetUp(packet.playerId, new Vector3(packet.x, packet.y, packet.z), packet.yaw);
+            RevivalDebugLog.LogNetworkTrace($"[Packet] GetUp: {packet.playerId} yaw {packet.yaw:F0}");
+            DownedRagdollController.OnRemoteGetUp(packet.playerId, packet.yaw);
         }
 
         //====================[ PlayerStateResync ]====================
@@ -441,7 +450,25 @@ namespace KeepMeAlive.Networking.Fika
             }
             st.LivesRemaining        = packet.livesRemaining;
             st.IsLimp                = packet.limp;
+            // The owner's word of where the pelvis lies from the root; a late joiner never had the downing packet.
+            if (packet.hasLyingOffset)
+            {
+                st.LyingOffset    = new Vector2(packet.lyingOffsetX, packet.lyingOffsetZ);
+                st.HasLyingOffset = true;
+            }
             DownedDragController.ApplyAuthoritativeDragger(packet.playerId, st, packet.draggerId);
+            // Where the body was put down, for a peer that missed the release (joined late). Only ever set from here, and
+            // not soon after a claim or release seen here: the owner's resync can predate a re-grab this peer already took.
+            if (packet.hasDropRest && !st.HasDropRest && !st.IsBeingDragged
+                && Time.time - st.DragClaimTime >= DownedDragController.ClaimSettleTime
+                && DownedPose.TryFacingFromSpine(packet.dropSpineYaw, out float dropFacing))
+            {
+                st.DropRestPelvis = new Vector3(packet.dropX, 0f, packet.dropZ);
+                st.DropFacingYaw  = dropFacing;
+                st.DropSpineYaw   = packet.dropSpineYaw;
+                st.DropOnBack     = packet.dropOnBack;
+                st.HasDropRest    = true;
+            }
 
             if (st.State == incoming) return;
 

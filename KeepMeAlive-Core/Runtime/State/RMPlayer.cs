@@ -57,12 +57,37 @@ namespace KeepMeAlive.Runtime.State
         public bool IsLimp { get; set; }
         // Time.time the owner went limp (owner only), for the minimum limp time.
         public float LimpStartTime { get; set; }
-        // Observers: where the owner said they were (root, body yaw) when they took the body back (GetUpPacket), the
-        // Time.time it came, and where the replicated player was at that moment.
-        public Vector3 GetUpRoot { get; set; }
+        // How the body went down, as the owner recorded it (the owner sets it going down, every other peer from
+        // BleedingOutPacket), so every peer plays the same fall from the same place. DownFallKind: 0 none (went down
+        // already lying), 1 the standing fall, 2 the fall from a crouch. DownFallTime: Time.time it was set (observers:
+        // when the packet came).
+        public int DownFallKind { get; set; }
+        public Vector3 DownPelvis { get; set; }
+        public float DownYaw { get; set; }
+        public float DownFallTime { get; set; } = -100f;
+        // Where the pelvis lies from the root when the body is at rest, level, in the body's own frame (x right, y
+        // forward at yaw 0): the body is eased onto the real root plus this. Known from going down (set with the above),
+        // or from the owner's resync.
+        public Vector2 LyingOffset { get; set; }
+        public bool HasLyingOffset { get; set; }
+        // After a drag: who let go of the body and will say where it came to rest (empty: nobody will), and when it was let go.
+        // Until that word comes, every peer's body lies where its own ragdoll settled.
+        public string DropDeclarerId { get; set; } = string.Empty;
+        public float DropReleaseTime { get; set; } = -100f;
+        // Where it came to rest, as the declarer's own ragdoll settled (DropRestPacket): the pelvis (level) and the pose's
+        // facing yaw. Every peer, the owner included, eases its body onto it, and the owner moves the real root under it.
+        // Both dropped on a new claim or a new downing.
+        public bool HasDropRest { get; set; }
+        public Vector3 DropRestPelvis { get; set; }
+        public float DropFacingYaw { get; set; }
+        // The spine's yaw it lies with (pelvis to shoulders), and whether it lies on its back (the breathing pose) or its
+        // front (EFT's prone): every peer's body lies the declarer's way up, whatever its own physics settled it as.
+        public float DropSpineYaw { get; set; }
+        public bool DropOnBack { get; set; } = true;
+        // Observers: the body yaw the owner said they had when they took the body back (GetUpPacket), and the
+        // Time.time it came.
         public float GetUpYaw { get; set; }
         public float GetUpTime { get; set; } = -100f;
-        public Vector3 GetUpSeenRoot { get; set; }
         // Server-authoritative per-raid lives counter, shared across self- and team-revive.
         public int LivesRemaining { get; set; }
 

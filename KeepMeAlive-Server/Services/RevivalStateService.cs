@@ -210,11 +210,10 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
         return source == RevivalSourceKind.Self ? postRevive.Self.CooldownSeconds : postRevive.Team.CooldownSeconds;
     }
 
-    private float GetProgressSeconds(RevivalSourceKind source)
-    {
-        var mechanics = configService.Config.Gameplay.Revival;
-        return source == RevivalSourceKind.Self ? mechanics.SelfReviveProgressSeconds : mechanics.TeamReviveProgressSeconds;
-    }
+    // Length of the revive progress phase after the hold, the same for every source (matches the client).
+    private const float ProgressSeconds = 5f;
+
+    private static float GetProgressSeconds(RevivalSourceKind source) => ProgressSeconds;
 
     private int GetLivesCost(RevivalSourceKind source)
     {

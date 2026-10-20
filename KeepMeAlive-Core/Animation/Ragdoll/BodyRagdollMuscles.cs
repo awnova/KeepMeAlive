@@ -213,7 +213,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         // Puts the current settings on every motor; only rewrites a drive whose values changed, so the sliders apply live.
         private static void UpdateMuscleDrives(Session session)
         {
-            float dampingRatio = KeepMeAliveSettings.RAGDOLL_MUSCLE_DAMPING_RATIO.Value;
+            const float dampingRatio = MuscleDampingRatio;
             foreach (var muscle in session.Muscles)
             {
                 if (muscle.Drive == null) continue;
@@ -245,12 +245,19 @@ namespace KeepMeAlive.Animation.Ragdoll
         private static bool IsThigh(EBodyPartColliderType part) =>
             part == EBodyPartColliderType.LeftThigh || part == EBodyPartColliderType.RightThigh;
 
+        // Muscle pull toward the pose (natural frequency squared, 1/s^2), and damping relative to critical.
+        private const float ArmMuscleStrength = 120f;
+        private const float LegMuscleStrength = 100f;
+        private const float SpineMuscleStrength = 150f;
+        private const float NeckHeadMuscleStrength = 110f;
+        private const float MuscleDampingRatio = 1f;
+
         private static float GroupStrength(MuscleGroup group) => group switch
         {
-            MuscleGroup.Arms => KeepMeAliveSettings.ARM_MUSCLE_STRENGTH.Value,
-            MuscleGroup.Legs => KeepMeAliveSettings.LEG_MUSCLE_STRENGTH.Value,
-            MuscleGroup.NeckHead => KeepMeAliveSettings.NECK_HEAD_MUSCLE_STRENGTH.Value,
-            _ => KeepMeAliveSettings.SPINE_MUSCLE_STRENGTH.Value
+            MuscleGroup.Arms => ArmMuscleStrength,
+            MuscleGroup.Legs => LegMuscleStrength,
+            MuscleGroup.NeckHead => NeckHeadMuscleStrength,
+            _ => SpineMuscleStrength
         };
 
         private static float PostureTone(MuscleGroup group, EBodyPartColliderType part) => group switch

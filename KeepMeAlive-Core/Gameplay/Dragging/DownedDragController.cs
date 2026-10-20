@@ -41,6 +41,8 @@ namespace KeepMeAlive.Gameplay.Dragging
 
         // How often the dragger's revive prompt is re-evaluated (it looks at the inventory).
         private const float StripRefreshSeconds = 0.25f;
+        // How often the dragger tells the others which way their body faces (DragHeadingPacket) (s).
+        private const float HeadingSendSeconds = 0.1f;
 
         //====================[ Local State ]====================
         // Whom the local player is dragging (null when nobody).
@@ -51,6 +53,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         // When the real body was first seen too far behind the ragdoll (-1 while it keeps up).
         private static float _snagSince = -1f;
         private static float _nextStripRefresh;
+        private static float _nextHeadingSend;
 
         public static bool IsLocalDragging => !string.IsNullOrEmpty(_draggingId);
         public static bool IsLocalDraggingBody(string reviveeId) => IsLocalDragging && _draggingId == reviveeId;
@@ -70,6 +73,8 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (IsLocalDragging) return false;
             if (reviveeState.State != RMState.BleedingOut) return false;
             if (reviveeState.IsBeingDragged || reviveeState.IsBeingRevived || reviveeState.IsSelfReviving || reviveeState.SelfReviveAwaitingAuth) return false;
+            // Still going down: the body is picked up once it has landed, where the owner's real body has landed too.
+            if (BodyRagdoll.IsFalling(revivee.ProfileId)) return false;
             if (RMSession.IsPlayerCritical(dragger.ProfileId)) return false;
             // Dragging is done crouched; going prone is one of the ways to let go.
             if (dragger.MovementContext.IsInPronePose) return false;
@@ -126,6 +131,85 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             st.CurrentDraggerId = draggerId ?? string.Empty;
             st.DragClaimTime = Time.time;
+            // Picked up: it will be put down again, somewhere else, and said so by whoever lets go then.
+            if (!string.IsNullOrEmpty(draggerId))
+            {
+                st.HasDropRest = false;
+                st.DropDeclarerId = string.Empty;
+            }
+        }
+
+        //====================[ Put Down ]====================
+        // Whoever lets go of a lifted body (the dragger; the owner when the dragger can no longer) is the one word on where
+        // it comes to rest: the release says the body is down and who will say where; that peer watches its own ragdoll of
+        // the body settle (it has the best view of the hands, and of the drop) and then says where it lies (DropRestPacket).
+        // Every peer's body eases onto that, and the owner's real body goes under it. Both packets come from the same
+        // sender, so the word on where always comes after the release.
+        // How long every peer waits for that word before the body is eased onto the real root instead (s): longer than any
+        // drop takes to settle; a declarer that died or left before its ragdoll settled never says.
+        internal const float DropRestWaitSeconds = 10f;
+
+        // The body this client let go of and is to say where it comes to rest, and until when.
+        private static string _declareFor;
+        private static float _declareUntil;
+
+        private static void Release(string reviveeId, string draggerId, bool held)
+        {
+            var local = ModUtils.GetYourPlayer();
+            // Only a lifted body is put down somewhere new, and only a peer with a ragdoll of it can watch it settle.
+            string declarer = held && local != null && BodyRagdoll.IsRagdolled(reviveeId) ? local.ProfileId : string.Empty;
+            ExpectDropRest(reviveeId, draggerId, declarer);
+            _declareFor = string.IsNullOrEmpty(declarer) ? null : reviveeId;
+            _declareUntil = Time.time + DropRestWaitSeconds;
+            FikaBridge.SendDragStatePacket(reviveeId, draggerId, false, declarer);
+        }
+
+        // A body was let go of (every peer, from the release): whose word on where it comes to rest to wait for. A release with
+        // no declarer (before the lift, a refused claim, a resent release) has nothing to wait for and changes nothing: the
+        // pickup already dropped what the last drop said. The dragger and the owner can both let go of the same body at once
+        // (the leash is checked on both sides); the dragger's word is the one, whichever release comes first, so every peer
+        // waits for the same one.
+        public static void ExpectDropRest(string reviveeId, string draggerId, string declarerId)
+        {
+            if (string.IsNullOrEmpty(declarerId)) return;
+            var st = RMSession.GetPlayerState(reviveeId);
+            if (st.IsBeingDragged) return;
+            if (!string.IsNullOrEmpty(st.DropDeclarerId) && st.DropDeclarerId != declarerId && declarerId != draggerId) return;
+            st.HasDropRest = false;
+            st.DropDeclarerId = declarerId;
+            st.DropReleaseTime = Time.time;
+        }
+
+        // This peer's ragdoll of a body has settled (BodyRagdoll): if this client let go of it, it says where it lies.
+        public static void OnBodySettled(string reviveeId, Vector3 pelvis, float spineYaw, bool onBack)
+        {
+            if (_declareFor == null || _declareFor != reviveeId) return;
+            _declareFor = null;
+            var local = ModUtils.GetYourPlayer();
+            if (local == null || Time.time > _declareUntil) return;
+            if (!ApplyDropRest(reviveeId, local.ProfileId, pelvis, spineYaw, onBack)) return;
+            FikaBridge.SendDropRestPacket(reviveeId, local.ProfileId, pelvis, spineYaw, onBack);
+        }
+
+        // Where a body let go of came to rest (every peer): only from the one the release named, and not once someone has
+        // picked it up again.
+        public static bool ApplyDropRest(string reviveeId, string declarerId, Vector3 pelvis, float spineYaw, bool onBack)
+        {
+            var st = RMSession.GetPlayerState(reviveeId);
+            if (st.IsBeingDragged || st.State != RMState.BleedingOut) return false;
+            if (string.IsNullOrEmpty(declarerId) || st.DropDeclarerId != declarerId) return false;
+            if (!DownedPose.TryFacingFromSpine(spineYaw, out float facing)) return false;
+
+            st.DropRestPelvis = pelvis;
+            st.DropFacingYaw = facing;
+            st.DropSpineYaw = spineYaw;
+            st.DropOnBack = onBack;
+            st.HasDropRest = true;
+
+            // The owner's real body goes under it.
+            var local = ModUtils.GetYourPlayer();
+            if (local != null && local.ProfileId == reviveeId) DownedRagdollController.OnDropRest(local, st);
+            return true;
         }
 
         //====================[ Dragger Actions ]====================
@@ -140,6 +224,9 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (!ApplyDragState(revivee.ProfileId, dragger.ProfileId, true)) return;
 
             _draggingId = revivee.ProfileId;
+            // Picked up again before it settled: no longer this client's to say where it lies. (Another body let go of
+            // earlier is still said once it settles.)
+            if (_declareFor == revivee.ProfileId) _declareFor = null;
             // Now, not on the next tick: the pickup lock holds from this frame.
             DragContext.Begin(dragger, revivee);
             FikaBridge.SendDragStatePacket(revivee.ProfileId, dragger.ProfileId, true);
@@ -157,8 +244,9 @@ namespace KeepMeAlive.Gameplay.Dragging
 
             string reviveeId = _draggingId;
             HandTrace.Log($"drag {dragger.ProfileId}: let go of {reviveeId}: {reason} | {ReleaseSnapshot(dragger, ModUtils.GetPlayerById(reviveeId))}");
+            bool held = IsLocalHoldingBody;
             ApplyDragState(reviveeId, dragger.ProfileId, false);
-            FikaBridge.SendDragStatePacket(reviveeId, dragger.ProfileId, false);
+            Release(reviveeId, dragger.ProfileId, held);
 
             EndLocalDraggerSession();
             EndSession(reviveeId);
@@ -272,7 +360,26 @@ namespace KeepMeAlive.Gameplay.Dragging
         public static void Clear()
         {
             _pullOffset = 0f;
+            _declareFor = null;
             EndLocalDraggerSession();
+        }
+
+        // Owner only: logs every frame the real root moves further than a step could explain, with what could have moved it.
+        private static Vector3 _traceRoot;
+        private static bool _traceHasRoot;
+        private static void TraceOwnRoot(Player player, RMPlayer st)
+        {
+            Vector3 root = player.Position;
+            if (_traceHasRoot)
+            {
+                Vector3 d = root - _traceRoot;
+                d.y = 0f;
+                if (d.magnitude > 0.5f)
+                    HandTrace.Log($"[RootTrace] jump {d.magnitude:F2} m {HandTrace.V(_traceRoot)} -> {HandTrace.V(root)} state={st?.State} dragged={st?.IsBeingDragged} limp={st?.IsLimp} " +
+                        $"dropRest={st?.HasDropRest} ragdolled={BodyRagdoll.IsRagdolled(player.ProfileId)} transform={HandTrace.V(player.Transform.Original.position)}");
+            }
+            _traceRoot = root;
+            _traceHasRoot = true;
         }
 
         //====================[ Per-Player Tick ]====================
@@ -280,6 +387,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         public static void Tick(Player player)
         {
             RMSession.TryGetPlayerState(player.ProfileId, out var st);
+            if (player.IsYourPlayer) TraceOwnRoot(player, st);
 
             if (st != null && st.IsBeingDragged) ValidateDrag(player, st);
 
@@ -341,10 +449,12 @@ namespace KeepMeAlive.Gameplay.Dragging
 
             if (dragger == null || !dragger.HealthController.IsAlive)
             {
-                // Dragger left or died: only the body's owner announces it so exactly one release is sent.
+                // Dragger left or died: only the body's owner announces it so exactly one release is sent, and puts the
+                // body down from its own ragdoll of it (the dragger can no longer).
                 string draggerId = st.CurrentDraggerId;
+                bool held = session != null && session.IsHeld;
                 SetDragger(st, string.Empty);
-                FikaBridge.SendDragStatePacket(revivee.ProfileId, draggerId, false);
+                Release(revivee.ProfileId, draggerId, held);
                 EndSession(revivee.ProfileId);
                 return;
             }
@@ -356,8 +466,9 @@ namespace KeepMeAlive.Gameplay.Dragging
             {
                 string draggerId = st.CurrentDraggerId;
                 HandTrace.Log($"drag {draggerId}: revivee-side leash release | {ReleaseSnapshot(dragger, revivee)}");
+                bool held = session != null && session.IsHeld;
                 SetDragger(st, string.Empty);
-                FikaBridge.SendDragStatePacket(revivee.ProfileId, draggerId, false);
+                Release(revivee.ProfileId, draggerId, held);
                 EndSession(revivee.ProfileId);
                 return;
             }
@@ -482,6 +593,12 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             if (!IsLocalDragging) return;
             DragLookLimit.Hold();
+            // The hold frame faces the way the dragger's body does; only this client knows that yaw (Fika sends the look).
+            if (Time.time >= _nextHeadingSend)
+            {
+                _nextHeadingSend = Time.time + HeadingSendSeconds;
+                FikaBridge.SendDragHeadingPacket(dragger.ProfileId, dragger.Transform.rotation.eulerAngles.y);
+            }
             UpdateReviveStrip(dragger);
 
             var reviveeState = RMSession.GetPlayerState(_draggingId);

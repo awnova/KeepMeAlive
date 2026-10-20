@@ -30,16 +30,10 @@ namespace KeepMeAlive.Gameplay.Revival
             return Mathf.Max(0.1f, configured);
         }
 
-        public static float GetProgressDuration(ReviveSource source)
-        {
-            float configured = source switch
-            {
-                ReviveSource.Self => Revival.SelfReviveProgressSeconds,
-                ReviveSource.Team => Revival.TeamReviveProgressSeconds,
-                _ => 3f
-            };
-            return Mathf.Max(3f, configured);
-        }
+        // Length of the revive progress phase after the hold, the same for every source.
+        public const float ProgressSeconds = 5f;
+
+        public static float GetProgressDuration(ReviveSource source) => ProgressSeconds;
 
         public static bool ShouldConsumeReviveItem(ReviveSource source)
         {

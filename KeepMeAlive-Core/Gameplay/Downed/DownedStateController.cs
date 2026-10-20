@@ -185,7 +185,7 @@ namespace KeepMeAlive.Gameplay.Downed
                     if (Cfg.Revival.BlockUiWhenDowned) Hud.SetInputBlocked(true);
                     // LivesRemaining is updated at raid start and after a revive.
                     DownedRagdollController.Begin(player, st);
-                    FikaBridge.SendBleedingOutPacket(id, st.CriticalTimer, st.LivesRemaining);
+                    FikaBridge.SendBleedingOutPacket(id, st.CriticalTimer, st.LivesRemaining, st);
                     RevivalAuthority.NotifyBeginCritical(id);
                     st.ResyncCooldown = -1f;
 

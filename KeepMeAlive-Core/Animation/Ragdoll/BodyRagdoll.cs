@@ -53,12 +53,15 @@ namespace KeepMeAlive.Animation.Ragdoll
         // inside the physics step (BodyRagdollMuscles), springs and never a servo, so gravity, the floor and the dragger's
         // hands still act on every part, and they are the same held or let go.
 
-        // After a drag the body stays physical until it has settled: every part slower than the Settle Movement
-        // Threshold (KeepMeAliveSettings.SETTLE_SPEED, m/s) and turning slower than SettleSpinPerSpeed times it (rad/s).
-        // It then plays the settle clip and goes on to the breathing loop (PhysicsToPose). There is no time limit;
-        // MinSettleSeconds only gives a body let go in the air time to start falling before it is looked at.
+        // After a drag the body stays physical until it has settled: every part slower than the settle
+        // threshold (SettleSpeed, m/s) and turning slower than SettleSpinPerSpeed times it (rad/s). It then plays the
+        // settle clip and goes on to the breathing loop (PhysicsToPose). A body still moving SettleTimeoutSeconds after it
+        // was let go counts as settled anyway; MinSettleSeconds gives a body let go in the air time to start falling
+        // before it is looked at.
+        private const float SettleSpeed = 1f;
         private const float SettleSpinPerSpeed = 5f;
         private const float MinSettleSeconds = 0.3f;
+        private const float SettleTimeoutSeconds = 3f;
 
         // Ragdoll-to-animation blend on exit (seconds).
         private const float BlendOutDuration = 0.35f;
@@ -121,14 +124,20 @@ namespace KeepMeAlive.Animation.Ragdoll
             }
             else if (want && session.Phase == BodyPhase.Prone)
             {
-                // EFT's prone body until a grab takes it back into the physics.
+                // EFT's prone body until a grab takes it back into the physics, or the one who let go of it says it lies
+                // on its back.
                 if (drag != null) ProneToPhysics(session);
+                else if (TryGetDropRest(player, out var st) && st.DropOnBack) ProneToPose(session, st);
             }
             else if (want && session.Phase != BodyPhase.Physics)
             {
                 // Animated until a grab hands the body to the physics. A body getting up that is wanted down again
                 // drops back to the ground through the physics too, and settles into the loop from there.
                 if (drag != null || session.Phase == BodyPhase.Roll) PoseToPhysics(session, drag != null);
+                // Lying on its back here, and the one who let go of it says it lies on its front.
+                else if (session.Phase == BodyPhase.Pose && !session.Pose.IsPlayingFall
+                         && TryGetDropRest(player, out var st) && !st.DropOnBack)
+                    PoseToProne(session, st);
             }
             else if (want)
             {
@@ -155,6 +164,10 @@ namespace KeepMeAlive.Animation.Ragdoll
         // The local player is still going down into prone (see Enter).
         private static bool InProneTransit(Player player) =>
             player.IsYourPlayer && player.CurrentStateName == EPlayerState.Transit2Prone;
+
+        // This peer's copy of the body is still playing its fall.
+        public static bool IsFalling(string profileId) =>
+            Active.TryGetValue(profileId, out var session) && session.Pose != null && session.Pose.IsPlayingFall;
 
         // The body is a ragdoll now (its bones off the player root), not an animation.
         public static bool IsPhysical(string profileId) =>
@@ -240,6 +253,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 // body's fall, when it recorded one, is played first (below), so it is not this.
                 if (!held && !DownedPose.IsUpright(player) && DownedPose.FallFor(player) == null
                     && (!player.IsYourPlayer || DownedRagdollController.LocalFallOf(player) == null)
+                    && !DownedPose.HasRecordedFall(player)
                     && !DragGrip.IsOnBack(player))
                 {
                     session.Prone = true;
@@ -260,8 +274,8 @@ namespace KeepMeAlive.Animation.Ragdoll
                 if (!held)
                 {
                     // The local body goes down by the fall it recorded going down (EFT's prone is already on it); an
-                    // observer works the fall out from the body it sees.
-                    session.Pose = (player.IsYourPlayer ? DownedPose.TryStartLocalFall(player, pool) : DownedPose.TryStartFall(player, pool))
+                    // observer plays the owner's fall (BleedingOutPacket), else works it out from the body it sees.
+                    session.Pose = (player.IsYourPlayer ? DownedPose.TryStartLocalFall(player, pool) : DownedPose.TryStartFallFor(player, pool))
                                    ?? DownedPose.TryResume(player, pool);
                     if (session.Pose != null) return;
                 }
@@ -316,7 +330,14 @@ namespace KeepMeAlive.Animation.Ragdoll
         private static void PhysicsToPose(Session session)
         {
             var player = session.Player;
-            if (!DragGrip.IsOnBack(player))
+            // Where it came to rest, read while the ragdoll still is one: if this client let go of it, it says so to everyone.
+            bool settledOnBack = DragGrip.IsOnBack(player);
+            if (TryGetRest(player.ProfileId, out Vector3 restPelvis, out float restSpine))
+                DownedDragController.OnBodySettled(player.ProfileId, restPelvis, restSpine, settledOnBack);
+
+            // The way up the one who let go of it says it lies, when said (it may be this client); else as it settled here.
+            bool declared = TryGetDropRest(player, out var st);
+            if (!(declared ? st.DropOnBack : settledOnBack))
             {
                 PhysicsToProne(session);
                 return;
@@ -326,7 +347,10 @@ namespace KeepMeAlive.Animation.Ragdoll
             try
             {
                 StopPhysics(session, true);
-                session.Pose = DownedPose.TrySettle(player, pool);
+                // Settled on its front here but to lie on its back: the loop, turned and slid onto the declared place.
+                session.Pose = settledOnBack
+                    ? DownedPose.TrySettle(player, pool)
+                    : DownedPose.TryStartLyingAt(player, pool, st.DropRestPelvis, st.DropFacingYaw);
                 if (session.Pose != null) return;
 
                 // Nothing to go back to: physical as before (lying still, so not tipped over).
@@ -349,9 +373,11 @@ namespace KeepMeAlive.Animation.Ragdoll
         {
             var player = session.Player;
             Vector3 level = default;
-            bool aimed = TryGetFront(session, out _, out Vector3 spine)
-                         && global::KeepMeAlive.Animation.Shared.MathUtil.TryLevel(spine, out level);
-            float yaw = aimed ? global::KeepMeAlive.Animation.Shared.MathUtil.YawOf(level) : 0f;
+            // The declared spine when the one who let go of it has said; else the way it settled here.
+            bool declared = TryGetDropRest(player, out var st);
+            bool aimed = declared || (TryGetFront(session, out _, out Vector3 spine)
+                                      && global::KeepMeAlive.Animation.Shared.MathUtil.TryLevel(spine, out level));
+            float yaw = declared ? st.DropSpineYaw : aimed ? global::KeepMeAlive.Animation.Shared.MathUtil.YawOf(level) : 0f;
             try
             {
                 // Back under the player first: TurnRoot turns the skeleton's top bones, which the ragdoll has detached.
@@ -365,6 +391,70 @@ namespace KeepMeAlive.Animation.Ragdoll
             {
                 MarkFailed(player.ProfileId);
                 Plugin.LogSource.LogError($"[BodyRagdoll] Handoff to prone failed for {player.ProfileId}: {ex}");
+                Exit(session, ExitPose.Rest);
+            }
+        }
+
+        // The place the one who let go of the body said it came to rest (DropRestPacket), when it has said.
+        private static bool TryGetDropRest(Player player, out RMPlayer st) =>
+            RMSession.TryGetPlayerState(player.ProfileId, out st) && st.HasDropRest;
+
+        // Lying on its back here, but the one who let go of it says it lies on its front: to EFT's prone, the root turned to
+        // the declared spine (the way PhysicsToProne hands a body that settled on its front over).
+        private static void PoseToProne(Session session, RMPlayer st)
+        {
+            var player = session.Player;
+            try
+            {
+                TurnRoot(player, st.DropSpineYaw);
+                HandBack(session, ExitPose.Blend, player.IsYourPlayer ? 0f : ProneWarmSeconds);
+                session.Prone = true;
+                RevivalDebugLog.LogDebug($"[BodyRagdoll] {player.ProfileId} lies on its front as declared: prone (yaw {st.DropSpineYaw:F0})");
+            }
+            catch (Exception ex)
+            {
+                MarkFailed(player.ProfileId);
+                Plugin.LogSource.LogError($"[BodyRagdoll] Handoff to prone failed for {player.ProfileId}: {ex}");
+                Exit(session, ExitPose.Rest);
+            }
+        }
+
+        // Lying prone here, but the one who let go of it says it lies on its back: taken back from EFT (as a grab does) and
+        // put into the loop, turned and slid onto the declared place.
+        private static void ProneToPose(Session session, RMPlayer st)
+        {
+            var player = session.Player;
+            if (InProneTransit(player)) return;
+            try
+            {
+                // A blend left from the hand-back would fight the pose.
+                var blend = player.GetComponent<BlendOut>();
+                if (blend != null)
+                {
+                    blend.enabled = false;
+                    UnityEngine.Object.Destroy(blend);
+                }
+                session.Prone = false;
+                if (session.Rest.Count == 0) CaptureRest(player, session);
+                DetachFromEft(player, session);
+                if (session.Interactable != null) session.Interactable.SetRagdollInert(true);
+
+                var pool = player.GetComponent<PlayerPoolObject>();
+                session.Pose = DownedPose.TryStartLyingAt(player, pool, st.DropRestPelvis, st.DropFacingYaw);
+                if (session.Pose != null)
+                {
+                    RevivalDebugLog.LogDebug($"[BodyRagdoll] {player.ProfileId} lies on its back as declared");
+                    return;
+                }
+
+                // Nothing to play: physical, lying still (as PhysicsToPose has it).
+                StartPhysics(session, pool, false, null, tip: false);
+                session.StayPhysical = true;
+            }
+            catch (Exception ex)
+            {
+                MarkFailed(player.ProfileId);
+                Plugin.LogSource.LogError($"[BodyRagdoll] Taking a prone body onto its back failed for {player.ProfileId}: {ex}");
                 Exit(session, ExitPose.Rest);
             }
         }
@@ -403,7 +493,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             float free = Time.time - session.FreeSince;
             if (free < MinSettleSeconds) return false;
 
-            float speed = KeepMeAliveSettings.SETTLE_SPEED.Value;
+            float speed = SettleSpeed;
             float spin = speed * SettleSpinPerSpeed;
             float fastest = 0f, fastestSpin = 0f;
             string fastestName = "", spinName = "";
@@ -413,7 +503,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 if (v > fastest) { fastest = v; fastestName = state.Body.name; }
                 if (w > fastestSpin) { fastestSpin = w; spinName = state.Body.name; }
             }
-            bool settled = fastest <= speed && fastestSpin <= spin;
+            bool settled = (fastest <= speed && fastestSpin <= spin) || free >= SettleTimeoutSeconds;
             TraceSettle(session, free, fastest, fastestName, speed, fastestSpin, spinName, spin, settled);
             return settled;
         }

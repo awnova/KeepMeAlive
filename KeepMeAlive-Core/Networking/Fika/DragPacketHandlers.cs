@@ -11,6 +11,22 @@ namespace KeepMeAlive.Networking.Fika
         public static void Register(IFikaNetworkManager manager)
         {
             manager.RegisterPacket<DragStatePacket, NetPeer>(OnDragState);
+            manager.RegisterPacket<DragHeadingPacket, NetPeer>(OnDragHeading);
+            manager.RegisterPacket<DropRestPacket, NetPeer>(OnDropRest);
+        }
+
+        private static void OnDropRest(DropRestPacket packet, NetPeer peer)
+        {
+            RevivalDebugLog.LogNetworkTrace($"[Packet] DropRest: {packet.reviveeId} lies at ({packet.x:F2}, {packet.z:F2}) spine {packet.spineYaw:F0} " +
+                $"{(packet.onBack ? "on its back" : "on its front")} (from {packet.declarerId})");
+            DownedDragController.ApplyDropRest(packet.reviveeId, packet.declarerId, new UnityEngine.Vector3(packet.x, 0f, packet.z), packet.spineYaw, packet.onBack);
+        }
+
+        private static void OnDragHeading(DragHeadingPacket packet, NetPeer peer)
+        {
+            var local = ModUtils.GetYourPlayer();
+            if (local != null && local.ProfileId == packet.draggerId) return;
+            DragSession.OnRemoteHeading(packet.draggerId, packet.yaw);
         }
 
         private static void OnDragState(DragStatePacket packet, NetPeer peer)
@@ -18,6 +34,9 @@ namespace KeepMeAlive.Networking.Fika
             bool applied = DownedDragController.ApplyDragState(packet.reviveeId, packet.draggerId, packet.active);
             RevivalDebugLog.LogNetworkTrace(
                 $"[Packet] Drag: {packet.draggerId} {(packet.active ? "started dragging" : "released")} {packet.reviveeId} (applied={applied})");
+
+            // Let go: wait for whoever let go to say where it came to rest (unless someone has picked it up since).
+            if (!packet.active) DownedDragController.ExpectDropRest(packet.reviveeId, packet.draggerId, packet.declarerId);
 
             // The revivee's owner settles competing drag claims.
             var local = ModUtils.GetYourPlayer();

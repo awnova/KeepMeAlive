@@ -39,6 +39,76 @@ namespace KeepMeAlive.Gameplay.Downed
         // The fall the local player is following, or null.
         private static Knockback _knockback;
 
+        //====================[ Put Down ]====================
+        // After a drag, whoever let go of the body declared where it is to lie (DownedDragController.ApplyDropRest). Every
+        // peer's body eases onto that place (DownedPose.AnchorToRoot), and the owner's real body goes under it (a few strides
+        // at most), so the revive prompt and every later get-up start from it too.
+        private const float MaxPutDownMove = 3f;
+        private const float PutDownMoveSeconds = 2f;
+        private const float PutDownMoveDone = 0.03f;
+
+        private sealed class PutDownMove
+        {
+            public string PlayerId;
+            public Vector3 Target;
+            public float Until;
+        }
+        private static PutDownMove _putDownMove;
+
+        // The owner's body was put down (owner only): the real body starts toward where it is to lie, right away.
+        public static void OnDropRest(Player player, RMPlayer st)
+        {
+            _putDownMove = null;
+            if (!st.HasLyingOffset || !st.HasDropRest || st.State != RMState.BleedingOut || st.IsBeingDragged) return;
+
+            // On its back the pose lies with its pelvis at the root plus the lying offset, as every peer's anchor has it. On
+            // its front EFT's own prone body is drawn on the root, its pelvis about on it.
+            Vector3 fromRoot = st.DropOnBack
+                ? Quaternion.Euler(0f, st.DropFacingYaw, 0f) * new Vector3(st.LyingOffset.x, 0f, st.LyingOffset.y)
+                : Vector3.zero;
+            Vector3 target = st.DropRestPelvis - fromRoot;
+            Vector3 gap = target - player.Position;
+            gap.y = 0f;
+            // Never chase a body across the map (a teleport, or a ragdoll that was flung): the root stays, the body eases to it.
+            if (gap.magnitude > PutDownMoveDone && gap.magnitude <= MaxPutDownMove)
+                _putDownMove = new PutDownMove { PlayerId = player.ProfileId, Target = target, Until = Time.time + PutDownMoveSeconds };
+        }
+
+        // Moves the real body under the declared rest at the knockback's pace, through the game's own collision.
+        private static void TickPutDownMove(Player player, RMPlayer st)
+        {
+            var move = _putDownMove;
+            if (move == null) return;
+            // Taken away (picked up again, got up, revived), there, or out of time (stopped by something in the way).
+            if (move.PlayerId != player.ProfileId || st.IsBeingDragged || !st.IsLimp || st.State != RMState.BleedingOut
+                || Time.time > move.Until)
+            {
+                _putDownMove = null;
+                return;
+            }
+
+            float dt = Time.deltaTime;
+            if (dt <= 0f) return;
+
+            Vector3 gap = move.Target - player.Position;
+            gap.y = 0f;
+            if (gap.sqrMagnitude < PutDownMoveDone * PutDownMoveDone)
+            {
+                _putDownMove = null;
+                return;
+            }
+
+            try
+            {
+                ForcedMotion.Apply(player.MovementContext, Vector3.ClampMagnitude(gap, MaxKnockbackSpeed * dt), dt);
+            }
+            catch (Exception ex)
+            {
+                _putDownMove = null;
+                Plugin.LogSource.LogWarning($"[DownedRagdoll] Put-down move failed: {ex.Message}");
+            }
+        }
+
         //====================[ Local Fall ]====================
         // The fall as it started, kept for the whole downed time. The local body is already going prone by the time the
         // pose could start (the animator is running its move into prone), so the pose cannot be placed from the body
@@ -57,7 +127,11 @@ namespace KeepMeAlive.Gameplay.Downed
         internal static LocalFall LocalFallOf(Player player) =>
             _localFall != null && _localFall.PlayerId == player.ProfileId ? _localFall : null;
 
-        internal static void ClearLocalFall() => _localFall = null;
+        internal static void ClearLocalFall()
+        {
+            _localFall = null;
+            _putDownMove = null;
+        }
 
         //====================[ Shared ]====================
         // Whether the player should stay ragdolled, including during the death handoff.
@@ -86,6 +160,18 @@ namespace KeepMeAlive.Gameplay.Downed
                     Facing = DownedPose.Facing(player)
                 };
             }
+
+            // What every other peer needs to play the same fall from the same place (BleedingOutPacket), and where the
+            // pelvis lies from the root, which the body keeps from here on (DownedPose eases onto the root plus it).
+            st.DownFallKind = _localFall == null ? 0 : fall == BakedClip.CrouchFall ? 2 : 1;
+            st.DownPelvis = pelvis != null ? pelvis.position : player.Position;
+            st.DownYaw = player.Transform.rotation.eulerAngles.y;
+            st.DownFallTime = Time.time;
+            Vector3 fromRoot = Quaternion.Inverse(DownedPose.Facing(player)) * (st.DownPelvis - player.Position);
+            st.LyingOffset = new Vector2(fromRoot.x, fromRoot.z);
+            st.HasLyingOffset = pelvis != null;
+            st.HasDropRest = false;
+            st.DropDeclarerId = string.Empty;
             if (fall != null && DownedPose.TryGetScale(player, out float scale))
             {
                 _knockback = new Knockback
@@ -104,6 +190,7 @@ namespace KeepMeAlive.Gameplay.Downed
         public static void TickLocal(Player player, RMPlayer st)
         {
             TickKnockback(player, st);
+            TickPutDownMove(player, st);
 
             // Keep the revivee limp while dragged and restart the minimum time on release.
             if (st.IsBeingDragged && st.State == RMState.BleedingOut)
@@ -180,33 +267,31 @@ namespace KeepMeAlive.Gameplay.Downed
             _localFall = null;
             // Taking the body back alive (not dying): observers roll it onto where the player is now.
             if (st.State is RMState.BleedingOut or RMState.Reviving or RMState.Revived)
-                FikaBridge.SendGetUpPacket(player.ProfileId, player.Position, player.Transform.rotation.eulerAngles.y);
+                FikaBridge.SendGetUpPacket(player.ProfileId, player.Transform.rotation.eulerAngles.y);
             // Sends the resync this tick so observers get the body up straight away.
             st.ResyncCooldown = -1f;
             RevivalDebugLog.LogDebug($"[DownedRagdoll] {player.ProfileId} no longer limp ({reason})");
         }
 
         //====================[ Observers ]====================
-        // The owner took the body back: it gets up now, without waiting for their resync, aimed at where they said
-        // they were.
-        public static void OnRemoteGetUp(string playerId, Vector3 root, float yaw)
+        // The owner took the body back: it gets up now, without waiting for their resync, aimed at the yaw they said
+        // their body had.
+        public static void OnRemoteGetUp(string playerId, float yaw)
         {
             var st = RMSession.GetPlayerState(playerId);
             st.IsLimp = false;
 
-            var player = ModUtils.GetPlayerById(playerId);
-            if (player == null) return;
-            st.GetUpRoot = root;
+            if (ModUtils.GetPlayerById(playerId) == null) return;
             st.GetUpYaw = yaw;
             st.GetUpTime = Time.time;
-            st.GetUpSeenRoot = player.Position;
         }
 
-        // Where the body getting up ends: the player's root and the yaw of their body. The owner's word of where they
-        // got up, carried along by however far the replicated player has moved since. Without it (not come yet, or
-        // from an earlier get-up) the replicated position and look: an observer's own root yaw is no use, it stopped
+        // Where the body getting up ends: the player's root and the yaw of their body. The root is the replicated
+        // player as this peer sees it: that is where EFT draws the body once it has it back, and every observer sees it
+        // with its own delay, so the owner's word of where they got up (a different clock) would leave the body short
+        // of or past it. The yaw is the owner's word, when it came: an observer's own root yaw is no use, it stopped
         // turning when the body was ragdolled (EFT turns it only from the body animator, which BodyRagdoll turns off,
-        // and Fika never sends it).
+        // and Fika never sends it), and without the packet (not come yet, or from an earlier get-up) the look.
         public static void GetUpTarget(Player player, out Vector3 root, out float yaw)
         {
             root = player.Position;
@@ -214,7 +299,6 @@ namespace KeepMeAlive.Gameplay.Downed
             yaw = player.IsYourPlayer ? player.Transform.rotation.eulerAngles.y : player.Rotation.x;
             if (player.IsYourPlayer) return;
             if (!RMSession.TryGetPlayerState(player.ProfileId, out var st) || Time.time - st.GetUpTime > GetUpAnchorSeconds) return;
-            root = st.GetUpRoot + (root - st.GetUpSeenRoot);
             yaw = st.GetUpYaw;
         }
     }

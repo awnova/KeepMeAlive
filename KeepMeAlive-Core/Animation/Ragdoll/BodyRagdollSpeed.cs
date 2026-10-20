@@ -12,10 +12,9 @@ namespace KeepMeAlive.Animation.Ragdoll
     internal static partial class BodyRagdoll
     {
         //====================[ Tuning ]====================
-        // Read live so these limits can be tuned while a ragdoll is held or settling.
-        private static float MaxPartSpeed => KeepMeAliveSettings.RAGDOLL_PART_SPEED_LIMIT.Value;
-        private static float MaxPartSpin => KeepMeAliveSettings.RAGDOLL_PART_SPIN_LIMIT.Value;
-        private static float MaxPelvisSpeed => KeepMeAliveSettings.RAGDOLL_PELVIS_SPEED_LIMIT.Value;
+        private const float MaxPartSpeed = 3f;      // m/s, each part relative to the pelvis
+        private const float MaxPartSpin = 10f;      // rad/s
+        private const float MaxPelvisSpeed = 12f;   // m/s
 
         // Once per tick, before the step: the limits the solver applies during it. StopPhysics restores the bodies' own values.
         private static void ApplySpeedLimits(Session session)

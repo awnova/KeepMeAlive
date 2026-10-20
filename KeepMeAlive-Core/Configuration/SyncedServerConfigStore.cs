@@ -34,15 +34,12 @@ namespace KeepMeAlive.Configuration
         public bool EnableTeamRevive { get; set; }
         public float SelfReviveHoldSeconds { get; set; }
         public float TeamReviveHoldSeconds { get; set; }
-        public float SelfReviveProgressSeconds { get; set; }
-        public float TeamReviveProgressSeconds { get; set; }
         public bool ConsumeReviveItemOnSelfRevive { get; set; }
         public bool ConsumeReviveItemOnTeamRevive { get; set; }
         public float CriticalStateSeconds { get; set; }
         public bool RestoreVitalsOnDowned { get; set; }
         public bool ApplyContusionOnDowned { get; set; }
         public bool ApplyStunOnDowned { get; set; }
-        public float MaxStunSeconds { get; set; }
         public float DownedMovementSpeedPercent { get; set; }
         public bool BlockUiWhenDowned { get; set; }
         public bool UnconsciousOnDowned { get; set; }

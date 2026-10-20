@@ -10,7 +10,7 @@ namespace KeepMeAlive.Animation.Ragdoll
     // Debug logs only (Enable Debug Logs): what a taken-over body is doing, one place for all of it. Nothing here changes
     // anything; each trace is a line (or a few) in the log to read after a drop, a drag or a get-up.
     //   [GetUpTrace]  - the seconds after the owner took the body back
-    //   [SettleTrace] - how fast the parts of a dropped body still move, against the Settle Movement Threshold
+    //   [SettleTrace] - how fast the parts of a dropped body still move, against the settle threshold
     //   [MuscleTrace] - how far each muscle is from the pose it pulls toward, and the body's shape
     internal static partial class BodyRagdoll
     {
@@ -67,7 +67,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 SplitError(muscle, out float twist, out float swing);
                 line.Append($"{Environment.NewLine}    {muscle.Group} {muscle.Body.name.Replace(BoneNames.Prefix, "")} off {errors[i].Angle:F0} = twist {twist:F0} + swing {swing:F0} | limits twist {joint.lowTwistLimit.limit:F0}..{joint.highTwistLimit.limit:F0} swing {joint.swing1Limit.limit:F0}/{joint.swing2Limit.limit:F0} | drive I {muscle.Inertia:F3} weight {muscle.Weight:F1}Nm {(IsThigh(muscle.Part) ? $"flex spring {muscle.Drive?.angularXDrive.positionSpring:F1} other {muscle.Drive?.angularYZDrive.positionSpring:F1}" : $"spring {muscle.Drive?.slerpDrive.positionSpring:F1} damper {muscle.Drive?.slerpDrive.positionDamper:F2}")}");
             }
-            Plugin.LogSource.LogInfo($"[MuscleTrace] {session.Player.ProfileId} step={step * 1000f:F1}ms motors damping={KeepMeAliveSettings.RAGDOLL_MUSCLE_DAMPING_RATIO.Value:F2} strengths arms/legs/spine/head={KeepMeAliveSettings.ARM_MUSCLE_STRENGTH.Value:F0}/{KeepMeAliveSettings.LEG_MUSCLE_STRENGTH.Value:F0}/{KeepMeAliveSettings.SPINE_MUSCLE_STRENGTH.Value:F0}/{KeepMeAliveSettings.NECK_HEAD_MUSCLE_STRENGTH.Value:F0} muscles={errors.Count} worst:{line}{Environment.NewLine}    shape: {DescribeShape(session)}{Environment.NewLine}    {DescribeSpeedCaps(session)}");
+            Plugin.LogSource.LogInfo($"[MuscleTrace] {session.Player.ProfileId} step={step * 1000f:F1}ms motors damping={MuscleDampingRatio:F2} strengths arms/legs/spine/head={ArmMuscleStrength:F0}/{LegMuscleStrength:F0}/{SpineMuscleStrength:F0}/{NeckHeadMuscleStrength:F0} muscles={errors.Count} worst:{line}{Environment.NewLine}    shape: {DescribeShape(session)}{Environment.NewLine}    {DescribeSpeedCaps(session)}");
         }
 
         // Debug logs only: the shape the body has taken in the world, to see whether it lies down or bends up. Each line

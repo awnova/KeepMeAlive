@@ -147,7 +147,11 @@ namespace KeepMeAlive.Gameplay.Dragging
         }
 
         // Raid boundary.
-        public static void ClearAll() => Active.Clear();
+        public static void ClearAll()
+        {
+            Active.Clear();
+            RemoteHeadings.Clear();
+        }
 
         //====================[ Progress ]====================
         public bool IsHeld => Current == Stage.Hold;
@@ -302,7 +306,38 @@ namespace KeepMeAlive.Gameplay.Dragging
             return grip != null && chest != null && !grip.ChestFacesUp(chest);
         }
 
-        // The dragger's facing, level.
-        private Vector3 Heading() => global::KeepMeAlive.Animation.Shared.MathUtil.Level(Dragger.Transform.forward, Vector3.forward);
+        //====================[ Dragger Heading ]====================
+        // Which way a remote dragger's body faces, as the dragger's own client says (DragHeadingPacket). Fika sends a player's
+        // look, never their body's yaw, so this peer's copy of the dragger faces only roughly where they do; the hold frame
+        // would then sit off to one side of where the dragger's own has it.
+        private const float HeadingStaleSeconds = 0.5f;
+        // How quickly the hold frame turns onto a new heading (1/s): the packets come a few times a second.
+        private const float HeadingFollowRate = 15f;
+        private static readonly Dictionary<string, (float Yaw, float Time)> RemoteHeadings = new Dictionary<string, (float, float)>();
+        private float _headingYaw;
+        private bool _hasHeadingYaw;
+
+        public static void OnRemoteHeading(string draggerId, float yaw)
+        {
+            if (string.IsNullOrEmpty(draggerId)) return;
+            RemoteHeadings[draggerId] = (yaw, Time.time);
+        }
+
+        // The dragger's facing, level: the dragger's own word when it is remote and recent, else the body on this peer.
+        private Vector3 Heading()
+        {
+            if (Dragger.IsYourPlayer || !RemoteHeadings.TryGetValue(Dragger.ProfileId, out var heading)
+                || Time.time - heading.Time > HeadingStaleSeconds)
+            {
+                _hasHeadingYaw = false;
+                return global::KeepMeAlive.Animation.Shared.MathUtil.Level(Dragger.Transform.forward, Vector3.forward);
+            }
+
+            _headingYaw = _hasHeadingYaw
+                ? Mathf.LerpAngle(_headingYaw, heading.Yaw, global::KeepMeAlive.Animation.Shared.MathUtil.Follow(HeadingFollowRate))
+                : heading.Yaw;
+            _hasHeadingYaw = true;
+            return global::KeepMeAlive.Animation.Shared.MathUtil.YawForward(_headingYaw);
+        }
     }
 }

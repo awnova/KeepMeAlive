@@ -89,15 +89,12 @@ public sealed class RevivalMechanicsConfig
     public bool EnableTeamRevive { get; set; } = true;
     public float SelfReviveHoldSeconds { get; set; } = 10f;
     public float TeamReviveHoldSeconds { get; set; } = 5f;
-    public float SelfReviveProgressSeconds { get; set; } = 5f;
-    public float TeamReviveProgressSeconds { get; set; } = 5f;
     public bool ConsumeReviveItemOnSelfRevive { get; set; } = true;
     public bool ConsumeReviveItemOnTeamRevive { get; set; } = false;
     public float CriticalStateSeconds { get; set; } = 180f;
     public bool RestoreVitalsOnDowned { get; set; } = true;
     public bool ApplyContusionOnDowned { get; set; } = true;
     public bool ApplyStunOnDowned { get; set; } = true;
-    public float MaxStunSeconds { get; set; } = 20f;
     public float DownedMovementSpeedPercent { get; set; } = 50f;
     public bool BlockUiWhenDowned { get; set; } = true;
     public bool UnconsciousOnDowned { get; set; } = false;
@@ -109,10 +106,7 @@ public sealed class RevivalMechanicsConfig
     {
         SelfReviveHoldSeconds = Math.Max(0.1f, SelfReviveHoldSeconds);
         TeamReviveHoldSeconds = Math.Max(0.1f, TeamReviveHoldSeconds);
-        SelfReviveProgressSeconds = Math.Max(3f, SelfReviveProgressSeconds);
-        TeamReviveProgressSeconds = Math.Max(3f, TeamReviveProgressSeconds);
         CriticalStateSeconds = Math.Max(1f, CriticalStateSeconds);
-        MaxStunSeconds = Math.Max(0f, MaxStunSeconds);
         DownedMovementSpeedPercent = Math.Clamp(DownedMovementSpeedPercent, 0f, 100f);
         MaxLivesPerRaid = Math.Max(1, MaxLivesPerRaid);
         SelfReviveLivesCost = Math.Max(0, SelfReviveLivesCost);

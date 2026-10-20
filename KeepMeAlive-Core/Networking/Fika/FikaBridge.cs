@@ -26,7 +26,7 @@ namespace KeepMeAlive.Networking.Fika
         }
 
         //====================[ Send Helper ]====================
-        private static void SendPacket<T>(ref T packet) where T : struct, INetSerializable
+        private static void SendPacket<T>(ref T packet, DeliveryMethod delivery = DeliveryMethod.ReliableOrdered) where T : struct, INetSerializable
         {
             if (!Singleton<IFikaNetworkManager>.Instantiated)
             {
@@ -36,7 +36,7 @@ namespace KeepMeAlive.Networking.Fika
             try
             {
                 bool broadcast = true;
-                Singleton<IFikaNetworkManager>.Instance.SendData(ref packet, DeliveryMethod.ReliableOrdered, broadcast);
+                Singleton<IFikaNetworkManager>.Instance.SendData(ref packet, delivery, broadcast);
             }
             catch (Exception ex)
             {
@@ -45,10 +45,23 @@ namespace KeepMeAlive.Networking.Fika
         }
 
         //====================[ Revival Packet Senders ]====================
-        public static void SendBleedingOutPacket(string playerId, float timeRemaining, int livesRemaining = 0)
+        // st carries how the body went down (DownedRagdollController.Begin sets it first).
+        public static void SendBleedingOutPacket(string playerId, float timeRemaining, int livesRemaining, RMPlayer st)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending bleeding out packet for {playerId}");
-            BleedingOutPacket packet = new() { playerId = playerId, timeRemaining = timeRemaining, livesRemaining = livesRemaining };
+            BleedingOutPacket packet = new()
+            {
+                playerId = playerId,
+                timeRemaining = timeRemaining,
+                livesRemaining = livesRemaining,
+                fallKind = st.DownFallKind,
+                pelvisX = st.DownPelvis.x,
+                pelvisY = st.DownPelvis.y,
+                pelvisZ = st.DownPelvis.z,
+                yaw = st.DownYaw,
+                offsetX = st.LyingOffset.x,
+                offsetZ = st.LyingOffset.y
+            };
             SendPacket(ref packet);
         }
 
@@ -126,24 +139,49 @@ namespace KeepMeAlive.Networking.Fika
                 reviveRequestedSource = st.ReviveRequestedSource,
                 livesRemaining        = st.LivesRemaining,
                 draggerId             = st.CurrentDraggerId ?? "",
-                limp                  = st.IsLimp
+                limp                  = st.IsLimp,
+                hasLyingOffset        = st.HasLyingOffset,
+                lyingOffsetX          = st.LyingOffset.x,
+                lyingOffsetZ          = st.LyingOffset.y,
+                hasDropRest           = st.HasDropRest,
+                dropX                 = st.DropRestPelvis.x,
+                dropZ                 = st.DropRestPelvis.z,
+                dropSpineYaw          = st.DropSpineYaw,
+                dropOnBack            = st.DropOnBack
             };
             SendPacket(ref packet);
         }
 
-        public static void SendGetUpPacket(string playerId, UnityEngine.Vector3 root, float yaw)
+        public static void SendGetUpPacket(string playerId, float yaw)
         {
-            RevivalDebugLog.LogNetworkTrace($"Sending get-up packet for {playerId} at {root} yaw {yaw:F0}");
-            GetUpPacket packet = new() { playerId = playerId, x = root.x, y = root.y, z = root.z, yaw = yaw };
+            RevivalDebugLog.LogNetworkTrace($"Sending get-up packet for {playerId} yaw {yaw:F0}");
+            GetUpPacket packet = new() { playerId = playerId, yaw = yaw };
             SendPacket(ref packet);
         }
 
         //====================[ Drag Packet Senders ]====================
-        public static void SendDragStatePacket(string reviveeId, string draggerId, bool active)
+        // declarerId: on a release of a lifted body, who will say where it comes to rest (empty: nobody will).
+        public static void SendDragStatePacket(string reviveeId, string draggerId, bool active, string declarerId = "")
         {
-            RevivalDebugLog.LogNetworkTrace($"Sending drag packet: {draggerId} {(active ? "dragging" : "released")} {reviveeId}");
-            DragStatePacket packet = new() { reviveeId = reviveeId, draggerId = draggerId, active = active };
+            RevivalDebugLog.LogNetworkTrace($"Sending drag packet: {draggerId} {(active ? "dragging" : "released")} {reviveeId}" +
+                (string.IsNullOrEmpty(declarerId) ? "" : $", rest to come from {declarerId}"));
+            DragStatePacket packet = new() { reviveeId = reviveeId, draggerId = draggerId, active = active, declarerId = declarerId };
             SendPacket(ref packet);
+        }
+
+        // Where a body let go of came to rest, as the declarer's own ragdoll of it settled.
+        public static void SendDropRestPacket(string reviveeId, string declarerId, UnityEngine.Vector3 pelvis, float spineYaw, bool onBack)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending drop rest: {reviveeId} lies at {pelvis} spine {spineYaw:F0} {(onBack ? "on its back" : "on its front")} (from {declarerId})");
+            DropRestPacket packet = new() { reviveeId = reviveeId, declarerId = declarerId, x = pelvis.x, z = pelvis.z, spineYaw = spineYaw, onBack = onBack };
+            SendPacket(ref packet);
+        }
+
+        // Several times a second while dragging; only the latest matters.
+        public static void SendDragHeadingPacket(string draggerId, float yaw)
+        {
+            DragHeadingPacket packet = new() { draggerId = draggerId, yaw = yaw };
+            SendPacket(ref packet, DeliveryMethod.Sequenced);
         }
 
         //====================[ Team Healing Packet Senders ]====================

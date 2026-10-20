@@ -59,6 +59,20 @@ namespace KeepMeAlive.Animation.Ragdoll
             return true;
         }
 
+        // Where this peer's ragdoll of a body is, for putting it down: its pelvis and the yaw of its spine (pelvis to
+        // shoulders), level. False when this peer has no ragdoll of it, or its spine stands too near upright to tell.
+        public static bool TryGetRest(string profileId, out Vector3 pelvis, out float spineYaw)
+        {
+            pelvis = default;
+            spineYaw = 0f;
+            if (string.IsNullOrEmpty(profileId) || !Active.TryGetValue(profileId, out var session) || session.Chest == null) return false;
+            if (!TryGetFront(session, out _, out Vector3 spine)) return false;
+            if (!global::KeepMeAlive.Animation.Shared.MathUtil.TryLevel(spine, out Vector3 level)) return false;
+            pelvis = session.Pelvis.position;
+            spineYaw = global::KeepMeAlive.Animation.Shared.MathUtil.YawOf(level);
+            return true;
+        }
+
         // Whether this peer shows the body as a ragdoll (the dragger's hands then hold that, not EFT's body).
         public static bool IsRagdolled(string profileId) =>
             !string.IsNullOrEmpty(profileId) && Active.TryGetValue(profileId, out var session) && session.Chest != null;
