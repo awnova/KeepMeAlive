@@ -5,13 +5,14 @@ namespace KeepMeAlive.Diagnostics
     internal static class RevivalDebugLog
     {
         //====================[ Flags ]====================
-        public static bool IsDebugLogsEnabled => KeepMeAliveSettings.ENABLE_DEBUG_LOGS?.Value ?? false;
+        // One server-side switch (Gameplay.Development.DebugMode); off until the server config has loaded.
+        public static bool IsDebugLogsEnabled => SyncedServerConfigStore.Config.Gameplay.Development.DebugMode;
 
-        public static bool IsReviveFlowEnabled => IsDebugLogsEnabled && (KeepMeAliveSettings.DEBUG_REVIVE_FLOW?.Value ?? false);
+        public static bool IsReviveFlowEnabled => IsDebugLogsEnabled;
 
-        public static bool IsNetworkTraceEnabled => IsDebugLogsEnabled && (KeepMeAliveSettings.DEBUG_NETWORK_TRACE?.Value ?? false);
+        public static bool IsNetworkTraceEnabled => IsDebugLogsEnabled;
 
-        public static bool IsSelfReviveTraceEnabled => IsDebugLogsEnabled && (KeepMeAliveSettings.DEBUG_SELF_REVIVE_TRACE?.Value ?? false);
+        public static bool IsSelfReviveTraceEnabled => IsDebugLogsEnabled;
 
         //====================[ Logging API ]====================
         public static void LogDebug(string message)

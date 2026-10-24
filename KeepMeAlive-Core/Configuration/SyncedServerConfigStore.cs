@@ -10,56 +10,68 @@ namespace KeepMeAlive.Configuration
     internal sealed class SyncedRuntimeConfig
     {
         public int SchemaVersion { get; set; }
-        public SyncedRevivalItemConfig RevivalItem { get; set; } = new();
         public SyncedGameplayConfig Gameplay { get; set; } = new();
     }
 
-    internal sealed class SyncedRevivalItemConfig
+    // The defibrillator is a fixed part of the mod; must match KeepMeAlive-Server TraderConstants.DefibTemplateId.
+    internal static class DefibIds
     {
-        public string TemplateId { get; set; }
+        public const string TemplateId = "5c052e6986f7746b207bc3c9";
+    }
+
+    // The stim a Self or Team revive uses up when the server asks for one: the game's Adrenaline unless the server
+    // config names another template.
+    internal static class StimIds
+    {
+        public const string DefaultTemplateId = "5c10c8fd86f7743d7d706df3";
+
+        public static string TemplateId
+        {
+            get
+            {
+                string configured = SyncedServerConfigStore.Config.Gameplay.StimItemId;
+                return string.IsNullOrWhiteSpace(configured) ? DefaultTemplateId : configured.Trim();
+            }
+        }
     }
 
     internal sealed class SyncedGameplayConfig
     {
-        public SyncedRevivalMechanicsConfig Revival { get; set; } = new();
-        public SyncedPostReviveConfig PostRevive { get; set; } = new();
+        public string StimItemId { get; set; } = "";
+        public SyncedDownedConfig Downed { get; set; } = new();
+        public SyncedReviveTypeConfig Self { get; set; } = new();
+        public SyncedReviveTypeConfig Team { get; set; } = new();
+        public SyncedReviveTypeConfig Defib { get; set; } = new();
         public SyncedProtectionConfig Protection { get; set; } = new();
         public SyncedTeamHealingConfig TeamHealing { get; set; } = new();
         public SyncedDevelopmentGameplayConfig Development { get; set; } = new();
     }
 
-    internal sealed class SyncedRevivalMechanicsConfig
+    internal sealed class SyncedDownedConfig
     {
-        public bool EnableSelfRevive { get; set; }
-        public bool EnableTeamRevive { get; set; }
-        public float SelfReviveHoldSeconds { get; set; }
-        public float TeamReviveHoldSeconds { get; set; }
-        public bool ConsumeReviveItemOnSelfRevive { get; set; }
-        public bool ConsumeReviveItemOnTeamRevive { get; set; }
         public float CriticalStateSeconds { get; set; }
-        public bool RestoreVitalsOnDowned { get; set; }
         public bool ApplyContusionOnDowned { get; set; }
         public bool ApplyStunOnDowned { get; set; }
         public float DownedMovementSpeedPercent { get; set; }
         public bool BlockUiWhenDowned { get; set; }
         public bool UnconsciousOnDowned { get; set; }
         public int MaxLivesPerRaid { get; set; }
-        public int SelfReviveLivesCost { get; set; }
-        public int TeamReviveLivesCost { get; set; }
     }
 
-    internal sealed class SyncedPostReviveConfig
+    internal sealed class SyncedReviveTypeConfig
     {
-        public SyncedPostReviveSourceConfig Self { get; set; } = new();
-        public SyncedPostReviveSourceConfig Team { get; set; } = new();
-    }
-
-    internal sealed class SyncedPostReviveSourceConfig
-    {
+        public bool Enabled { get; set; }
+        public float HoldSeconds { get; set; }
+        public int LivesCost { get; set; }
+        public bool RequireDefib { get; set; }
+        public bool ConsumeDefib { get; set; }
+        public bool RequireStim { get; set; }
         public bool RestoreBodyParts { get; set; }
         public SyncedBodyRestorePercentConfig RestorePercent { get; set; } = new();
-        public bool RemoveBleeds { get; set; }
-        public bool RemoveFractures { get; set; }
+        public bool RemoveLightBleeds { get; set; }
+        public bool RemoveHeavyBleeds { get; set; }
+        public bool RemoveLegFractures { get; set; }
+        public bool RemoveArmFractures { get; set; }
         public float InvulnerabilityDurationSeconds { get; set; }
         public float InvulnerabilitySpeedPercent { get; set; }
         public float CooldownSeconds { get; set; }
@@ -83,15 +95,12 @@ namespace KeepMeAlive.Configuration
         public bool BlockDeathInCritical { get; set; }
         public bool EnableGodMode { get; set; }
         public bool EnableGhostMode { get; set; }
-        public bool EnableHardcoreMode { get; set; }
-        public bool HardcoreHeadshotsAreFatal { get; set; }
-        public float HardcoreCriticalStateChance { get; set; }
+        public float DeathFromHeadshotChance { get; set; }
     }
 
     internal sealed class SyncedTeamHealingConfig
     {
         public bool Enabled { get; set; }
-        public float HoldSeconds { get; set; }
         public float UseTimeMultiplier { get; set; }
         public float MinHpResourceToDisplay { get; set; }
         public float NutritionMinDeficitToDisplay { get; set; }
@@ -100,7 +109,7 @@ namespace KeepMeAlive.Configuration
 
     internal sealed class SyncedDevelopmentGameplayConfig
     {
-        public bool NoReviveItemRequired { get; set; }
+        public bool DebugMode { get; set; }
     }
 
     //====================[ SyncedServerConfigStore ]====================
@@ -109,7 +118,7 @@ namespace KeepMeAlive.Configuration
     internal static class SyncedServerConfigStore
     {
         // Must match KeepMeAlive-Server RevivalServerConfig.CurrentSchemaVersion.
-        public const int SupportedSchemaVersion = 4;
+        public const int SupportedSchemaVersion = 1;
 
         private const string Route = "/keepmealive/state/get-runtime-config";
 

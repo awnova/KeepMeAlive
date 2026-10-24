@@ -1,553 +1,185 @@
 //====================[ Imports ]====================
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using EFT;
-using EFT.HealthSystem;
 using EFT.InventoryLogic;
 using UnityEngine;
 
 namespace KeepMeAlive.Gameplay.Medical
 {
-    //====================[ MedCategory ]====================
-    // Logical groupings shown to the healer before they pick a specific item.
-    public enum MedCategory
+    //====================[ WheelCategory ]====================
+    // One slot of the wheel's first ring: whether the patient needs it and what the healer carries for it (empty when it
+    // isn't needed: an unneeded category never opens).
+    internal readonly struct WheelCategory
     {
-        Bleeds,   // treats LightBleeding / HeavyBleeding
-        Breaks,   // treats Fracture or DestroyedPart (splints, CMS, SURV12)
-        Health,   // restores HP (medkit pool or direct HP effect)
-        Comfort,  // relieves Pain / Contusion / Poisoning
-        Nutrition // food and drinks only (restores Energy / Hydration)
+        public readonly MedCategory Category;
+        public readonly bool Needed;
+        public readonly List<MedOffer> Offers;
+
+        public WheelCategory(MedCategory category, bool needed, List<MedOffer> offers)
+        {
+            Category = category;
+            Needed = needed;
+            Offers = offers;
+        }
+
+        public bool CanOpen => Needed && Offers.Count > 0;
     }
 
     //====================[ TeamMedical ]====================
-    public static class TeamMedical
+    // The healer's side of team healing. The healer picks an item on the wheel (TeamHealWheel); SendHeal reserves it and
+    // asks the patient's machine to use it. The patient answers once the use has started (TeamHealPatient) with how long it
+    // takes, which runs the hold bar here, and again when the use ends. The item's own drain and "in use" state come back
+    // through Fika's health sync, as for any use of someone else's meds.
+    internal static class TeamMedical
     {
-        private static SyncedGameplayConfig Cfg => SyncedServerConfigStore.Config.Gameplay;
+        //====================[ Constants ]====================
+        // How long a sent item stays reserved if the patient never answers: their inventory wait (2 s) plus their wait for
+        // the use to start (TeamHealPatient.UseStartTimeoutSeconds, 5 s), with room for the round trip.
+        private const float ReservationTimeoutSeconds = 12f;
+        // Once the use has started the item stays reserved until the patient says it ended, or this long past its use
+        // time: the in-use state Fika syncs back may lag the answer.
+        private const float InUseGraceSeconds = 5f;
 
-        //====================[ Constants & Fields ]====================
-        private static float HEAL_HOLD_TIME => Cfg.TeamHealing.HoldSeconds;
-
-        // How long a sent item stays reserved if the patient never answers.
-        private const float ReservationTimeoutSeconds = 10f;
-
-        // Items this healer has sent to a patient but whose use the patient hasn't confirmed yet.
-        // Nothing on the healer's machine marks the item as in use until the patient's med effect
-        // syncs back, so without this the same item could be offered (and sent) twice.
-        private static readonly Dictionary<string, float> ReservedItemExpiry = new();
-
-        //====================[ Reservations ]====================
-        public static void ClearReservations() => ReservedItemExpiry.Clear();
-
-        private static bool IsReserved(string itemId)
+        //====================[ State ]====================
+        // Items sent to a patient whose use hasn't ended yet. Nothing on this machine marks the item as in use until the
+        // patient's med effect syncs back, so without this the same item could be offered (and sent) twice.
+        // Started: the patient answered that the use began, so running out is no longer "never answered".
+        private struct Reservation
         {
-            if (!ReservedItemExpiry.TryGetValue(itemId, out var expiry)) return false;
-            if (Time.time < expiry) return true;
-
-            ReservedItemExpiry.Remove(itemId);
-            VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealNoResponse);
-            return false;
+            public float Expiry;
+            public bool Started;
         }
 
-        // Called on the healer when the patient reports back.
-        public static void OnHealResult(string itemId, bool success, string reason)
+        private static readonly Dictionary<string, Reservation> Reservations = new();
+
+        // The hold bar showing a teammate's use of one of this healer's items, so only that use's end hides it.
+        private static CustomTimer _useBar;
+        private static string _useBarItemId;
+
+        //====================[ Wheel Queries ]====================
+        // All five categories in enum order (the wheel's fixed places), from one inventory pass.
+        public static List<WheelCategory> Categories(Player healer, Player patient)
         {
-            ReservedItemExpiry.Remove(itemId);
-            if (success)
+            var offers = MedCatalog.Offers(healer, IsReserved);
+            var conditions = PatientNeeds.ReadConditions(patient);
+            var result = new List<WheelCategory>(5);
+            foreach (MedCategory category in Enum.GetValues(typeof(MedCategory)))
             {
-                VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.HealSucceeded);
+                bool needed = PatientNeeds.Needs(patient, category);
+                result.Add(new WheelCategory(category, needed,
+                    needed ? MedCatalog.ForCategory(offers, category, conditions) : new List<MedOffer>()));
             }
-            else
-            {
-                VFX_UI.Text(Color.yellow, string.IsNullOrEmpty(reason) ? PlayerFacingMessages.TeamHeal.PatientBusy : reason);
-            }
-        }
-
-        //====================[ Incoming Team Heal ]====================
-        // Applies an incoming TeamHealPacket on the patient's own machine. Called by
-        // TeamHealPacketHandlers once the packet is confirmed to be about the local player.
-        internal static IEnumerator ApplyIncomingTeamHeal(Player patient, string healerId, string itemId)
-        {
-            // Wait out any in-flight inventory operation on the patient (e.g. a revive equip still
-            // being processed) before racing ApplyItem against it.
-            yield return ModUtils.WaitForInventoryFree(patient, 2f, "TeamHealPacket");
-
-            bool success = false;
-            string reason = PlayerFacingMessages.TeamHeal.PatientBusy;
-            try
-            {
-                // Resolve the item after the inventory wait.
-                Player healer = ModUtils.GetPlayerById(healerId);
-                Item item = FindItemInInventory(healer, itemId);
-
-                if (patient == null || patient.HealthController == null || !patient.HealthController.IsAlive || RMSession.IsPlayerCritical(patient.ProfileId))
-                {
-                    reason = PlayerFacingMessages.TeamHeal.PatientUnavailable;
-                }
-                else if (!ModUtils.IsTeamHealItemValid(healer, item, out var invalidReason))
-                {
-                    reason = invalidReason;
-                }
-                else
-                {
-                    TeamHealUseTime.SetPending(item);
-                    success = patient.HealthController.ApplyItem(item, EBodyPart.Common);
-                    if (!success) TeamHealUseTime.Clear();
-                }
-            }
-            catch (Exception ex)
-            {
-                TeamHealUseTime.Clear();
-                Plugin.LogSource.LogError($"[Packet] TeamHeal apply error: {ex.Message}");
-            }
-
-            if (success)
-            {
-                VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.YouWereHealed);
-            }
-
-            if (patient != null)
-            {
-                FikaBridge.SendTeamHealResultPacket(patient.ProfileId, healerId, itemId, success, success ? string.Empty : reason);
-            }
-        }
-
-        //====================[ Public API ]====================
-
-        // Searches a player's inventory for an item with the given instance ID. Works for both local and remote players.
-        public static Item FindItemInInventory(Player player, string itemId)
-        {
-            try
-            {
-                var items = player?.Inventory?.AllRealPlayerItems;
-                if (items == null)
-                {
-                    return null;
-                }
-
-                foreach (var item in items)
-                {
-                    if (item?.Id == itemId)
-                    {
-                        return item;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[TeamMedical] FindItemInInventory error: {ex.Message}");
-            }
-            
-            return null;
-        }
-
-        // The single inventory query behind every med list: each med/food item in the healer's
-        // inventory that isn't reserved, in use or empty and maps to at least one category, paired
-        // with those categories so callers never classify twice.
-        // One entry per item type (e.g. one bandage even if healer carries three), keeping the
-        // instance with the most resource left so a nearly-empty kit found first never hides a full one.
-        // Classifies candidate items from their templates with ClassifyMed.
-        private static List<(Item item, List<MedCategory> categories)> GetCandidateMeds(Player healer)
-        {
-            var result = new List<(Item item, List<MedCategory> categories)>();
-            try
-            {
-                if (healer?.Inventory == null)
-                {
-                    return result;
-                }
-
-                var bestByTemplate = new Dictionary<string, int>();
-                foreach (var item in healer.Inventory.AllRealPlayerItems)
-                {
-                    if (item is not Meds && item is not FoodDrink)
-                    {
-                        continue;
-                    }
-
-                    // Exclude reserved or currently used items.
-                    if (IsReserved(item.Id) || ModUtils.IsItemInUse(healer, item))
-                    {
-                        continue;
-                    }
-
-                    // Exclude medkits with no remaining charges.
-                    var kit = item.GetItemComponent<MedKitComponent>();
-                    if (kit != null && kit.HpResource < float.Epsilon)
-                        continue;
-
-                    // Exclude items that do not map to a recognized category.
-                    var categories = ClassifyMed(item);
-                    if (categories.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    string tpl = item.StringTemplateId;
-                    if (bestByTemplate.TryGetValue(tpl, out int index))
-                    {
-                        if (RemainingResource(item) > RemainingResource(result[index].item)) result[index] = (item, categories);
-                        continue;
-                    }
-
-                    bestByTemplate[tpl] = result.Count;
-                    result.Add((item, categories));
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[TeamMedical] GetCandidateMeds error: {ex.Message}");
-            }
-
             return result;
         }
 
-        private static float RemainingResource(Item item)
+        // The items ring for one category.
+        public static List<MedOffer> OffersFor(Player healer, Player patient, MedCategory category) =>
+            MedCatalog.ForCategory(MedCatalog.Offers(healer, IsReserved), category, PatientNeeds.ReadConditions(patient));
+
+        // Whether Interact opens onto anything: some category the patient needs has an item.
+        public static bool HasAnythingToGive(Player healer, Player patient)
         {
-            var kit = item.GetItemComponent<MedKitComponent>();
-            if (kit != null) return kit.HpResource;
-            var food = item.GetItemComponent<FoodDrinkComponent>();
-            if (food != null) return food.HpPercent;
-            return item.StackObjectsCount;
-        }
-
-        //====================[ Category Helpers ]====================
-
-        // Returns every MedCategory that applies to this item based on template effects.
-        private static List<MedCategory> ClassifyMed(Item item)
-        {
-            var categories = new List<MedCategory>();
-            try
+            foreach (var category in Categories(healer, patient))
             {
-                if (item?.Template is not IHealthEffectsComponentTemplate template) return categories;
-
-                var dmg = template.DamageEffects;
-                var hp  = template.HealthEffects;
-
-                // Food and drinks are always (and only through this) Nutrition.
-                if (item is FoodDrink)
-                    categories.Add(MedCategory.Nutrition);
-
-                if (dmg != null && (dmg.ContainsKey(EDamageEffectType.LightBleeding) ||
-                                    dmg.ContainsKey(EDamageEffectType.HeavyBleeding)))
-                    categories.Add(MedCategory.Bleeds);
-
-                if (dmg != null && (dmg.ContainsKey(EDamageEffectType.Fracture) ||
-                                    dmg.ContainsKey(EDamageEffectType.DestroyedPart)))
-                    categories.Add(MedCategory.Breaks);
-
-                if ((dmg != null && (dmg.ContainsKey(EDamageEffectType.Pain) ||
-                                     dmg.ContainsKey(EDamageEffectType.Contusion) ||
-                                     dmg.ContainsKey(EDamageEffectType.Intoxication) ||
-                                     dmg.ContainsKey(EDamageEffectType.LethalIntoxication))) ||
-                    (hp != null && hp.ContainsKey(EHealthFactorType.Poisoning)))
-                    categories.Add(MedCategory.Comfort);
-
-                // Restores HP via a medkit resource pool, a direct HP effect, or a positive
-                // HealthRate stim buff (e.g. Propital — no MedKitComponent).
-                if ((item.Template is MedsTemplate medsTemplate && medsTemplate.MaxHpResource > 0) ||
-                    (hp != null && hp.TryGetValue(EHealthFactorType.Health, out var hpEffect) &&
-                     hpEffect != null && hpEffect.Value > 0) ||
-                    HasHealthRateBuff(item))
-                    categories.Add(MedCategory.Health);
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[TeamMedical] ClassifyMed error: {ex.Message}");
-            }
-            return categories;
-        }
-
-        private static bool HasHealthRateBuff(Item item)
-        {
-            var stimBuffs = item.GetItemComponent<StimulatorBuffsComponent>();
-            if (stimBuffs == null) return false;
-            foreach (var buff in stimBuffs.BuffSettings)
-            {
-                if (buff.BuffType == EStimulatorBuffType.HealthRate && buff.Value > 0) return true;
+                if (category.CanOpen) return true;
             }
             return false;
         }
 
-        // Health category: medkits below the configured HP-resource minimum are hidden, unless the
-        // item also has a positive HealthRate stim buff. Items like a modded Salewa (low HpResource
-        // + HealthRegeneration) must bypass the threshold so they still appear when nearly depleted.
-        private static bool MeetsHealthThreshold(Item item)
-        {
-            var kit = item.GetItemComponent<MedKitComponent>();
-            if (kit == null) return true;
-            float minHp = Mathf.Max(Cfg.TeamHealing.MinHpResourceToDisplay, float.Epsilon);
-            return kit.HpResource >= minHp || HasHealthRateBuff(item);
-        }
-
-        private static bool MatchesCategory(Item item, List<MedCategory> categories, MedCategory category)
-            => categories.Contains(category) && (category != MedCategory.Health || MeetsHealthThreshold(item));
-
-        // For two-condition categories, retain items that treat the patient's known condition.
-        private static bool TreatsSoleCondition(bool hasA, bool hasB, bool treatsA, bool treatsB)
-            => !(hasA && !hasB && !treatsA) && !(hasB && !hasA && !treatsB);
-
-        // Returns usable meds for the given category only. Pass null to get all.
-        public static IEnumerable<Item> GetUsableMedsByCategory(
-            Player healer, Player patient, MedCategory? category)
-        {
-            if (patient == null) yield break;
-
-            // For the Bleeds category, detect the patient's bleed types and select applicable items.
-            bool patientHasLight = false, patientHasHeavy = false;
-            if (category == MedCategory.Bleeds)
-            {
-                try
-                {
-                    var hc = patient.HealthController;
-                    if (hc != null)
-                    {
-                        // ILightBleeding = LightBleeding active effect
-                        // IHeavyBleeding = HeavyBleeding active effect
-                        patientHasLight = hc.FindActiveEffect<ILightBleeding>(EBodyPart.Common) != null;
-                        patientHasHeavy = hc.FindActiveEffect<IHeavyBleeding>(EBodyPart.Common) != null;
-                    }
-                    else { patientHasLight = patientHasHeavy = true; } // Treat both bleed types as possible.
-                }
-                catch { patientHasLight = patientHasHeavy = true; } // Treat both bleed types as possible.
-            }
-
-            // For the Breaks category, detect whether the patient has fractures, destroyed limbs,
-            // Alu splint treats fractures; CMS/SURV-12 treat fractures and destroyed limbs.
-            bool patientHasFracture = false, patientHasDestroyed = false;
-            if (category == MedCategory.Breaks)
-            {
-                try
-                {
-                    var hc = patient.HealthController;
-                    if (hc != null)
-                    {
-                        foreach (var part in _allBodyParts)
-                        {
-                            if (hc.IsBodyPartBroken(part))    patientHasFracture  = true;
-                            if (IsSurgicallyRestorable(hc, part)) patientHasDestroyed = true;
-                            if (patientHasFracture && patientHasDestroyed) break;
-                        }
-                    }
-                    else { patientHasFracture = patientHasDestroyed = true; } // Treat both conditions as possible.
-                }
-                catch { patientHasFracture = patientHasDestroyed = true; } // Treat both conditions as possible.
-            }
-
-            foreach (var (med, categories) in GetCandidateMeds(healer))
-            {
-                if (category != null && !MatchesCategory(med, categories, category.Value))
-                    continue;
-
-                var dmg = (med.Template as IHealthEffectsComponentTemplate)?.DamageEffects;
-                if (dmg != null)
-                {
-                    if (category == MedCategory.Bleeds &&
-                        !TreatsSoleCondition(patientHasLight, patientHasHeavy,
-                            dmg.ContainsKey(EDamageEffectType.LightBleeding),
-                            dmg.ContainsKey(EDamageEffectType.HeavyBleeding)))
-                        continue;
-
-                    if (category == MedCategory.Breaks &&
-                        !TreatsSoleCondition(patientHasFracture, patientHasDestroyed,
-                            dmg.ContainsKey(EDamageEffectType.Fracture),
-                            dmg.ContainsKey(EDamageEffectType.DestroyedPart)))
-                        continue;
-                }
-
-                yield return med;
-            }
-        }
-
-        // Template-only check: does the healer carry at least one available med that CAN treat
-        // the given category — regardless of whether the patient currently needs it.
-        // Used by BodyInteractable to decide which category buttons to render. Shares
-        // GetCandidateMeds with the picker, so a button never opens onto an empty list.
-        public static bool HealerHasMedForCategory(Player healer, MedCategory category)
-        {
-            foreach (var (item, categories) in GetCandidateMeds(healer))
-            {
-                if (MatchesCategory(item, categories, category)) return true;
-            }
-            return false;
-        }
-
-        // Checks if the patient currently has an active condition that the given category can treat.
-        // Returns true when the health state cannot be determined.
-        //
-        //   Bleeds  ? IBleeding (LightBleeding / HeavyBleeding)
-        //   Breaks  ? fracture on any part (IsBodyPartBroken) OR destroyed / blacked part surgery can restore
-        //   Health  ? any non-destroyed body-part with HP below maximum (medkits can treat)
-        //   Comfort ? Pain (IPain), Contusion (IContusion),
-        //             Intoxication (IIntoxication), LethalIntoxication (ILethalIntoxication).
-        //             Dehydration / Exhaustion are treated by food and drink, so they belong to Nutrition.
-        private static readonly EBodyPart[] _allBodyParts =
-        {
-            EBodyPart.Head, EBodyPart.Chest, EBodyPart.Stomach,
-            EBodyPart.LeftArm, EBodyPart.RightArm,
-            EBodyPart.LeftLeg, EBodyPart.RightLeg
-        };
-
-        // EFT's RestoreBodyPart (CMS / SURV-12) refuses Head and Chest.
-        private static bool IsSurgicallyRestorable(IHealthController hc, EBodyPart part)
-            => part != EBodyPart.Head && part != EBodyPart.Chest && hc.IsBodyPartDestroyed(part);
-
-        public static bool PatientNeedsCategory(Player patient, MedCategory category)
+        //====================[ Sending ]====================
+        // Sends the item to the patient at once. False (with the reason shown) when it can't be sent.
+        public static bool SendHeal(Player healer, Player patient, Item item)
         {
             try
             {
-                if (patient?.HealthController == null) return true;
-                var hc = patient.HealthController;
+                if (healer == null || item == null) return false;
 
-                switch (category)
-                {
-                    case MedCategory.Bleeds:
-                        // IBleeding = LightBleeding | HeavyBleeding
-                        return hc.FindActiveEffect<IBleeding>(EBodyPart.Common) != null;
-
-                    case MedCategory.Breaks:
-                        // Fracture (IsBodyPartBroken) OR destroyed/blacked limb (IsBodyPartDestroyed).
-                        // Surgical kits (CMS / SURV-12) treat both conditions.
-                        foreach (var part in _allBodyParts)
-                        {
-                            if (hc.IsBodyPartBroken(part) || IsSurgicallyRestorable(hc, part))
-                                return true;
-                        }
-                        return false;
-
-                    case MedCategory.Health:
-                        // Any limb with HP damage that a medkit can restore.
-                        // Destroyed (blacked) limbs require a surgical kit ? Breaks, not Health.
-                        foreach (var part in _allBodyParts)
-                        {
-                            if (hc.IsBodyPartDestroyed(part)) continue;
-                            var h = hc.GetBodyPartHealth(part);
-                            if (h.Current < h.Maximum - 0.5f) return true;
-                        }
-                        return false;
-
-                    case MedCategory.Comfort:
-                        // --- Active damage effects ---
-                        // Pain (IPain)
-                        if (hc.FindActiveEffect<IPain>(EBodyPart.Common) != null) return true;
-                        // Contusion (IContusion)
-                        if (hc.FindActiveEffect<IContusion>(EBodyPart.Common) != null) return true;
-                        // Intoxication / Poisoning (IIntoxication)
-                        if (hc.FindActiveEffect<IIntoxication>(EBodyPart.Common) != null) return true;
-                        // Lethal Intoxication (ILethalIntoxication)
-                        if (hc.FindActiveEffect<ILethalIntoxication>(EBodyPart.Common) != null) return true;
-                        return false;
-
-                    case MedCategory.Nutrition:
-                        // Food/drink need: critically low effects or any meaningful deficit.
-                        float nutritionMinDeficit = Mathf.Max(0f, Cfg.TeamHealing.NutritionMinDeficitToDisplay);
-                        if (hc.FindActiveEffect<IDehydration>(EBodyPart.Common) != null) return true;
-                        if (hc.FindActiveEffect<IExhaustion>(EBodyPart.Common) != null) return true;
-                        if (hc.Hydration.Current < hc.Hydration.Maximum - nutritionMinDeficit) return true;
-                        if (hc.Energy.Current    < hc.Energy.Maximum    - nutritionMinDeficit) return true;
-                        return false;
-
-                    default:
-                        return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogWarning($"[TeamMedical] PatientNeedsCategory error (fail-open): {ex.Message}");
-                return true;
-            }
-        }
-
-        //====================[ Internal Logic ]====================
-        
-        // Called by MedPickerInteractable after healer selects a specific med item. Starts hold-to-heal animation and queues packet.
-        public static void BeginHeal(Player healer, Player patient, Item item, Action<bool> onComplete)
-        {
-            try
-            {
-                if (healer == null || patient == null || item == null)
-                {
-                    onComplete?.Invoke(false);
-                    return;
-                }
-
-                // A hold is already running; its handler still reports back to the picker.
-                if (CrouchHoldState.IsActive(healer)) return;
-
-                var handler = new HealCompleteHandler
-                {
-                    healer       = healer,
-                    patient      = patient,
-                    healerId     = healer.ProfileId,
-                    patientId    = patient.ProfileId,
-                    selectedItem = item,
-                    onComplete   = onComplete
-                };
-
-                if (!CrouchHoldState.Begin(healer, HEAL_HOLD_TIME, handler.Complete))
-                {
-                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.CannotHealWhileMoving);
-                    onComplete?.Invoke(false);
-                    return;
-                }
-
-                Hud.ShowHold(Hud.HoldKind.Heal, HEAL_HOLD_TIME, ModUtils.GetPlayerDisplayName(patient.ProfileId));
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[TeamMedical] BeginHeal error: {ex.Message}");
-                onComplete?.Invoke(false);
-            }
-        }
-
-        //====================[ HealCompleteHandler ]====================
-        internal class HealCompleteHandler
-        {
-            //====================[ Fields ]====================
-            public Player        healer;
-            public Player        patient;
-            public string        healerId;
-            public string        patientId;
-            public Item          selectedItem;
-            public Action<bool>  onComplete;
-
-            //====================[ Callbacks ]====================
-            public void Complete(bool result)
-            {
-                Hud.HideHold();
-
-                if (!result)
-                {
-                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealingCancelled);
-                    onComplete?.Invoke(false);
-                    return;
-                }
-
-                // Validate patient availability.
-                if (patient == null || patient.HealthController == null || !patient.HealthController.IsAlive)
+                if (patient == null || patient.HealthController == null || !patient.HealthController.IsAlive
+                    || RMSession.IsPlayerCritical(patient.ProfileId))
                 {
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.PatientUnavailable);
-                    onComplete?.Invoke(true); // Close the UI
-                    return;
+                    return false;
                 }
 
-                // The item may have been used, moved, or sent while I held it.
-                if (IsReserved(selectedItem.Id) || ModUtils.IsItemInUse(healer, selectedItem)
-                    || !ModUtils.IsTeamHealItemValid(healer, selectedItem, out _))
+                // The item may have been used, moved or sent since the wheel listed it.
+                if (IsReserved(item) || ModUtils.IsItemInUse(healer, item) || !ModUtils.IsTeamHealItemValid(healer, item, out _))
                 {
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.ItemUnavailable);
-                    onComplete?.Invoke(true);
-                    return;
+                    return false;
                 }
 
-                ReservedItemExpiry[selectedItem.Id] = Time.time + ReservationTimeoutSeconds;
+                Reservations[item.Id] = new Reservation { Expiry = Time.time + ReservationTimeoutSeconds };
                 VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.HealingTeammate);
 
-                // Broadcast to all machines; the patient applies the item and answers with a
-                // TeamHealResultPacket, which releases the reservation.
-                FikaBridge.SendTeamHealPacket(patientId, healerId, selectedItem.Id);
-                onComplete?.Invoke(true); // Close the UI.
+                // Broadcast; the patient's machine applies it and answers with TeamHealResultPacket.
+                FikaBridge.SendTeamHealPacket(patient.ProfileId, healer.ProfileId, item.Id);
+                return true;
             }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[TeamMedical] SendHeal error: {ex.Message}");
+                return false;
+            }
+        }
+
+        //====================[ Patient Answers ]====================
+        // The patient's use started (success, with its length) or never will (the reason).
+        public static void OnHealResult(string itemId, bool success, string reason, float useSeconds)
+        {
+            if (success) Reservations[itemId] = new Reservation { Expiry = Time.time + Mathf.Max(0f, useSeconds) + InUseGraceSeconds, Started = true };
+            else Reservations.Remove(itemId);
+            RevivalDebugLog.LogNetworkTrace($"[TeamHeal] result for {itemId}: success={success} use={useSeconds:F2}s reason='{reason}'");
+
+            if (!success)
+            {
+                VFX_UI.Text(Color.yellow, string.IsNullOrEmpty(reason) ? PlayerFacingMessages.TeamHeal.PatientBusy : reason);
+                return;
+            }
+
+            // A hold the healer started meanwhile (a revive) keeps its own bar.
+            var healer = ModUtils.GetYourPlayer();
+            if (useSeconds <= 0f || CrouchHoldState.IsActive(healer)) return;
+            var item = MedCatalog.Find(healer, itemId);
+            _useBar = Hud.ShowHold(Hud.HoldKind.Heal, useSeconds, item?.LocalizedShortName());
+            _useBarItemId = itemId;
+        }
+
+        // The patient's use of the item ended: run to the end, or stopped early.
+        public static void OnHealEnded(string itemId, bool completed)
+        {
+            RevivalDebugLog.LogNetworkTrace($"[TeamHeal] use of {itemId} ended (completed={completed})");
+            Reservations.Remove(itemId);
+
+            if (_useBarItemId == itemId)
+            {
+                Hud.HideHold(_useBar);
+                _useBar = null;
+                _useBarItemId = null;
+            }
+
+            if (completed) VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.HealSucceeded);
+            else VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealInterrupted);
+        }
+
+        //====================[ Reservations ]====================
+        private static bool IsReserved(Item item)
+        {
+            if (!Reservations.TryGetValue(item.Id, out var reservation)) return false;
+            if (Time.time < reservation.Expiry) return true;
+
+            Reservations.Remove(item.Id);
+            if (!reservation.Started) VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealNoResponse);
+            return false;
+        }
+
+        //====================[ Lifecycle ]====================
+        // Raid boundary.
+        public static void Clear()
+        {
+            Reservations.Clear();
+            _useBar = null;
+            _useBarItemId = null;
         }
     }
 }

@@ -36,22 +36,12 @@ namespace KeepMeAlive.Gameplay.Downed
             return TryRouteInteractive(owner, interactive, ref result);
         }
 
-        // Routes actions for BodyInteractable and MedPickerInteractable instances.
+        // Routes actions for BodyInteractable instances.
         private static bool TryRouteInteractive(GamePlayerOwner owner, IInteractive interactive, ref AvailableInteractionState result)
         {
-            if (interactive is BodyInteractable body)
-            {
-                result = body.GetActions(owner);
-                return true;
-            }
-
-            if (interactive is MedPickerInteractable picker)
-            {
-                result = picker.GetActions(owner);
-                return true;
-            }
-
-            return false;
+            if (interactive is not BodyInteractable body) return false;
+            result = body.GetActions(owner);
+            return true;
         }
 
         //====================[ Lifecycle ]====================
@@ -142,23 +132,6 @@ namespace KeepMeAlive.Gameplay.Downed
             foreach (var bi in live)
             {
                 if (bi != null) UnityEngine.Object.Destroy(bi.gameObject);
-            }
-        }
-
-        public static void ForceClosePicker(string playerId)
-        {
-            if (string.IsNullOrEmpty(playerId)) return;
-
-            try
-            {
-                if (Cache.TryGetValue(playerId, out var interactable) && interactable != null)
-                {
-                    interactable.ForceClosePicker();
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogWarning($"[BodyInteractableRuntime] ForceClosePicker error: {ex.Message}");
             }
         }
     }

@@ -50,17 +50,20 @@ namespace KeepMeAlive.Networking.Fika.Packets
     {
         public string playerId;
         public string reviverId;
+        public int source; // ReviveSource cast to int (0=Self, 1=Team, 2=Defib)
 
         public void Deserialize(NetDataReader reader)
         {
             playerId = reader.GetString();
             reviverId = reader.GetString();
+            source = reader.GetInt();
         }
 
         public void Serialize(NetDataWriter writer)
         {
             writer.Put(playerId ?? "");
             writer.Put(reviverId ?? "");
+            writer.Put(source);
         }
     }
 
@@ -94,7 +97,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
         public float  invulTimer;
         public float  cooldownTimer;
         public string reviverId;
-        public int    reviveRequestedSource; // ReviveSource cast to int (0=Self, 1=Team)
+        public int    reviveRequestedSource; // ReviveSource cast to int (0=Self, 1=Team, 2=Defib)
         public int    livesRemaining;
         public string draggerId;             // Owner's current dragger (empty when released)
         public bool   limp;                  // Whether the player is still limp
@@ -171,6 +174,45 @@ namespace KeepMeAlive.Networking.Fika.Packets
         }
     }
 
+    // Owner -> everyone: the owner's self-revive key went down (they stab themselves with a stim pen for holdSeconds), with the yaw of
+    // their body (root) at that moment, which a body lying prone rolls onto its back along (SelfStimSequence).
+    public struct SelfStimPacket : INetSerializable
+    {
+        public string playerId;
+        public float  holdSeconds;
+        public float  yaw;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            playerId    = reader.GetString();
+            holdSeconds = reader.GetFloat();
+            yaw         = reader.GetFloat();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(playerId ?? "");
+            writer.Put(holdSeconds);
+            writer.Put(yaw);
+        }
+    }
+
+    // Owner -> everyone: the key was let go before the hold was over.
+    public struct SelfStimCancelPacket : INetSerializable
+    {
+        public string playerId;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            playerId = reader.GetString();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(playerId ?? "");
+        }
+    }
+
     //====================[ Revival Action Packets ]====================
     public struct SelfReviveStartPacket : INetSerializable
     {
@@ -227,17 +269,20 @@ namespace KeepMeAlive.Networking.Fika.Packets
     {
         public string reviveeId;
         public string reviverId;
+        public int source; // ReviveSource cast to int (1=Team, 2=Defib)
 
         public void Deserialize(NetDataReader reader)
         {
             reviveeId = reader.GetString();
             reviverId = reader.GetString();
+            source = reader.GetInt();
         }
 
         public void Serialize(NetDataWriter writer)
         {
             writer.Put(reviveeId ?? "");
             writer.Put(reviverId ?? "");
+            writer.Put(source);
         }
     }
 
@@ -263,7 +308,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
         }
     }
 
-    // Patient -> healer: whether the requested item was actually applied.
+    // Patient -> healer: the requested item's use started (and how long it takes, s), or why it won't.
     public struct TeamHealResultPacket : INetSerializable
     {
         public string patientId;
@@ -271,6 +316,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
         public string itemId;
         public bool success;
         public string reason;
+        public float useSeconds;
 
         public void Deserialize(NetDataReader reader)
         {
@@ -279,6 +325,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
             itemId = reader.GetString();
             success = reader.GetBool();
             reason = reader.GetString();
+            useSeconds = reader.GetFloat();
         }
 
         public void Serialize(NetDataWriter writer)
@@ -288,6 +335,55 @@ namespace KeepMeAlive.Networking.Fika.Packets
             writer.Put(itemId ?? "");
             writer.Put(success);
             writer.Put(reason ?? "");
+            writer.Put(useSeconds);
+        }
+    }
+
+    // Patient -> healer: the use that started is over, run to the end or stopped early.
+    public struct TeamHealUseEndedPacket : INetSerializable
+    {
+        public string patientId;
+        public string healerId;
+        public string itemId;
+        public bool completed;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            patientId = reader.GetString();
+            healerId = reader.GetString();
+            itemId = reader.GetString();
+            completed = reader.GetBool();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(patientId ?? "");
+            writer.Put(healerId ?? "");
+            writer.Put(itemId ?? "");
+            writer.Put(completed);
+        }
+    }
+
+    // Owner -> everyone: a defib lost a use but stayed in the inventory. The counter is not an inventory operation, so
+    // Fika never carries it; without this the other peers (and anyone looting the body) keep the old count.
+    public struct DefibUsesPacket : INetSerializable
+    {
+        public string ownerId;
+        public string itemId;
+        public float usesLeft;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            ownerId = reader.GetString();
+            itemId = reader.GetString();
+            usesLeft = reader.GetFloat();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(ownerId ?? "");
+            writer.Put(itemId ?? "");
+            writer.Put(usesLeft);
         }
     }
 

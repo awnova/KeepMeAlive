@@ -12,7 +12,7 @@ namespace KeepMeAlive.Gameplay.Downed
     //
     // Loose loot inside grids (rig, backpack, pocket contents) stays lootable. Anything sitting
     // in a slot of the revivee's equipment tree (worn gear, weapons and their attachments/mags,
-    // armor plates, special slots) and the revive item itself are protected.
+    // armor plates, special slots), the defib itself and, while a revive requires one, the stim are protected.
     internal static class DownedLootGuard
     {
         private static ItemController _looterController;
@@ -56,8 +56,11 @@ namespace KeepMeAlive.Gameplay.Downed
             if (item == null || item.GetRootItem() != equipment) return false;
             if (item.CurrentAddress is SlotItemAddress) return true;
 
-            string reviveTpl = SyncedServerConfigStore.Config.RevivalItem.TemplateId;
-            return !string.IsNullOrEmpty(reviveTpl) && string.Equals(item.StringTemplateId, reviveTpl, System.StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(item.StringTemplateId, DefibIds.TemplateId, System.StringComparison.OrdinalIgnoreCase)) return true;
+
+            // The stim is only protected while a revive needs it; otherwise it is ordinary loot.
+            return RevivePolicy.IsStimRequiredAnywhere
+                && string.Equals(item.StringTemplateId, StimIds.TemplateId, System.StringComparison.OrdinalIgnoreCase);
         }
 
         // Handles transactions that place items into the revivee's worn slots.

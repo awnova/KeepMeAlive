@@ -45,6 +45,8 @@ namespace KeepMeAlive.Animation.Ragdoll
             // The body lies on its front and EFT's own prone animation has it (nothing of it is taken over; the session only
             // remembers that, so the body is not taken again next tick).
             public bool Prone;
+            // The body has played the self-revive sequence (BodyRagdollSelfStim): it lies on its back where it is, whatever a drag once said.
+            public bool SelfStimmed;
             // Debug logs only: the next time the muscles' error is logged.
             public float NextMuscleTrace;
             // Debug logs only, since the last muscle trace: how many ticks the speed and spin caps (BodyRagdollSpeed) cut something, and

@@ -40,19 +40,19 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             if (player == null || !player.IsYourPlayer) return;
 
-            if (!RevivePolicy.IsEnabled(ReviveSource.Self))
+            if (!RevivePolicy.IsSelfReviveEnabled)
             {
                 Hud.SetStrip(Hud.StripState.SelfReviveOff);
                 return;
             }
 
-            if (RevivePolicy.RequiresItem && !ModUtils.HasReviveItem(player))
+            if (!RevivePolicy.HasRequiredItem(ReviveSource.Self, player))
             {
-                Hud.SetStrip(Hud.StripState.NeedsDefib);
+                Hud.SetStrip(Hud.StripState.NeedsStim);
                 return;
             }
 
-            int cost = Cfg.Revival.SelfReviveLivesCost;
+            int cost = RevivePolicy.LivesCost(ReviveSource.Self);
             var st = RMSession.GetPlayerState(player.ProfileId);
 
             if (st.LivesRemaining < cost)
@@ -97,11 +97,14 @@ namespace KeepMeAlive.Gameplay.Downed
             // Preserve unconscious state when canceling a self-revive attempt that
             // didn't complete — the player is still downed and should stay locked out.
             bool preserveUnconscious = st.State == RMState.BleedingOut
-                                       && Cfg.Revival.UnconsciousOnDowned
+                                       && Cfg.Downed.UnconsciousOnDowned
                                        && st.IsSilentInventoryAnimActive;
 
             if (!preserveUnconscious)
                 RevivePresentation.Stop(player, st, "CancelReviveState");
+
+            // A self-revive hold that ends early cuts the self-stim short on every peer.
+            SelfStimFlow.Cancel(player);
 
             st.IsBeingRevived = false;
             st.ClearSelfReviveInput();
@@ -162,7 +165,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 st.PlayerDamageType = damageType;
                 RMSession.SetPlayerState(id, RMState.BleedingOut);
                 BeginNewReviveCycle(st);
-                st.CriticalTimer = Cfg.Revival.CriticalStateSeconds;
+                st.CriticalTimer = Cfg.Downed.CriticalStateSeconds;
                 RevivalController.StopReviveProgress(st);
                 st.ClearReviveSession();
                 st.ClearSelfReviveInput();
@@ -173,16 +176,15 @@ namespace KeepMeAlive.Gameplay.Downed
                 st.GiveUpHoldTime = -1f;
                 st.LastObservedState = st.State;
 
-                BodyInteractableRuntime.ForceClosePicker(id);
-                if (Cfg.Revival.RestoreVitalsOnDowned)
-                    DownedHealthAndEffectsManager.RestoreVitalsToMinimum(player);
+                TeamHealWheel.CloseFor(id, "patient went down");
+                DownedHealthAndEffectsManager.RestoreVitalsToMinimum(player);
 
                 if (Cfg.Protection.EnableGhostMode) GhostMode.EnterGhostModeById(id);
                 if (Cfg.Protection.EnableGodMode) GodMode.Enable(player);
 
                 if (player.IsYourPlayer)
                 {
-                    if (Cfg.Revival.BlockUiWhenDowned) Hud.SetInputBlocked(true);
+                    if (Cfg.Downed.BlockUiWhenDowned) Hud.SetInputBlocked(true);
                     // LivesRemaining is updated at raid start and after a revive.
                     DownedRagdollController.Begin(player, st);
                     FikaBridge.SendBleedingOutPacket(id, st.CriticalTimer, st.LivesRemaining, st);
@@ -195,7 +197,7 @@ namespace KeepMeAlive.Gameplay.Downed
                     DownedVoiceController.OnLocalDowned(player);
                     DownedHealthAndEffectsManager.ApplyCriticalEffects(player);
                     DownedMovementController.ApplyRevivableState(player);
-                    if (Cfg.Revival.UnconsciousOnDowned) RevivePresentation.ApplyUnconscious(player);
+                    if (Cfg.Downed.UnconsciousOnDowned) RevivePresentation.ApplyUnconscious(player);
                     HeartbeatEffect.Start(player, st);
                     DownedScreenEffects.Start(player);
                     ShowCriticalStateUI(player, st);
@@ -259,8 +261,9 @@ namespace KeepMeAlive.Gameplay.Downed
                 GhostMode.ClearAll();
                 BodyInteractableRuntime.Clear();
                 DeathMode.ClearCaches();
-                TeamMedical.ClearReservations();
-                TeamHealUseTime.Clear();
+                TeamHealWheel.Close("raid boundary");
+                TeamMedical.Clear();
+                TeamHealPatient.Clear();
                 DownedHealthAndEffectsManager.ResetDamageTracking();
                 RMSession.Clear();
                 RevivalDebugLog.LogDebug($"[Downed] Raid-boundary reset ({reason})");
@@ -473,7 +476,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 Hud.HideHold();
                 Hud.HideStatusOverlay();
                 VFX_UI.Text(Color.red, PlayerFacingMessages.Downed.DownedBanner);
-                st.CriticalStateMainTimer = Hud.StartBleed(Cfg.Revival.CriticalStateSeconds, st.LivesRemaining);
+                st.CriticalStateMainTimer = Hud.StartBleed(Cfg.Downed.CriticalStateSeconds, st.LivesRemaining);
                 ShowSelfRevivePromptIfEligible(player);
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedStateController] ShowCriticalStateUI error: {ex.Message}"); }

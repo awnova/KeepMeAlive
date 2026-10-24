@@ -10,8 +10,8 @@ using SPT.Reflection.Patching;
 
 namespace KeepMeAlive.Patches
 {
-    //====================[ SpecialSlotReviveItemPatch ]====================
-    internal class SpecialSlotReviveItemPatch : ModulePatch
+    //====================[ SpecialSlotDefibPatch ]====================
+    internal class SpecialSlotDefibPatch : ModulePatch
     {
         //====================[ Patching ]====================
         protected override MethodBase GetTargetMethod() => AccessTools.Method(typeof(Slot), nameof(Slot.CheckCompatibility));
@@ -21,10 +21,9 @@ namespace KeepMeAlive.Patches
         {
             if (__result || item == null || !__instance.IsSpecial) return;
 
-            var revivalTpl = SyncedServerConfigStore.Config.RevivalItem.TemplateId;
             var itemTpl = item.StringTemplateId ?? (string)item.TemplateId;
 
-            if (!string.IsNullOrEmpty(revivalTpl) && string.Equals(itemTpl, revivalTpl, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(itemTpl, DefibIds.TemplateId, StringComparison.OrdinalIgnoreCase))
             {
                 __result = true;
             }

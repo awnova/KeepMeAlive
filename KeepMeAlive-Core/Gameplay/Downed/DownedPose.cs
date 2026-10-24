@@ -53,6 +53,9 @@ namespace KeepMeAlive.Gameplay.Downed
         // The pelvis' height above the player's feet, as a share of its standing height, under which the body is
         // crouched and falls from the crouch. Standing is 1 and the crouch the clip starts from is about 0.43.
         private const float CrouchedHeightShare = 0.72f;
+        // How far into the roll (share of it) the first person camera starts sliding from the head to the game's own view
+        // (under Spine3); it is there when the roll ends, so the hand-back to the game has nothing left to move.
+        private const float RollCameraSlideStart = 0.4f;
         //====================[ Instance ]====================
         // The clip played first (the standing or the crouched fall, or the settle; null when joining on the loop or once
         // getting up) and then the loop; all share the rig.
@@ -71,6 +74,10 @@ namespace KeepMeAlive.Gameplay.Downed
         private Player _player;
         // The camera follow failed once: it is left alone from then on (the pose carries on).
         private bool _cameraFailed;
+        // The game's own first person view this frame (CameraPosition, read before the pose turns Spine3), while rolling.
+        private Vector3 _gameViewPosition;
+        private Quaternion _gameViewRotation;
+        private bool _hasGameView;
         private Transform _pelvis;
         // Where the pelvis was at the clips' reference frame (standing, before the fall), and the ground under it.
         private Vector3 _pelvisStart;
@@ -83,6 +90,18 @@ namespace KeepMeAlive.Gameplay.Downed
 
         // Getting up: the roll and where it turns and slides the body to (null otherwise).
         private GetUpState _getUp;
+
+        // The self-revive sequence playing (null otherwise; SelfStimSequence), the hand and pen that go with it, and what the last frame
+        // of it asked of them.
+        private SelfStimSequence _stim;
+        private SelfStimHands _stimHands;
+        private float _stimHandFrame = -1f;
+        private bool _stimPen;
+        // Where the needle is: in from the hold's start, out from the put away's (the voice cries out at each).
+        private enum Needle { Out, In, Withdrawn }
+        private Needle _stimNeedle;
+        // The sequence's roll put the body down where it is from the player's root: it stays there (the root anchor would slide it).
+        private bool _stimPlaced;
 
         // Ragdoll bones, sampled each frame so the ragdoll can carry on with their motion.
         private MotionRecorder _motion;
@@ -401,6 +420,9 @@ namespace KeepMeAlive.Gameplay.Downed
             float endSpineYaw = clip.SpineYaw(clip.Frames - 1);
             if (float.IsNaN(endSpineYaw)) return false;
 
+            // A sequence still playing is over: the player has the body back.
+            EndSelfStim();
+
             // The fall, the loop and the roll share the reference frame, so the placement the body lies at now is
             // the roll's as well.
             _getUp = new GetUpState(clip, endSpineYaw, clip.Pelvis[clip.Frames - 1] * _rig.Scale, _facing, _pelvisStart, root, yaw);
@@ -428,6 +450,114 @@ namespace KeepMeAlive.Gameplay.Downed
             _ground.SurfaceDirection = facing * Quaternion.Inverse(_facing) * _ground.SurfaceDirection;
             _facing = facing;
             return pelvis;
+        }
+
+        //====================[ Self Stim ]====================
+        // Blend into the sequence, and out of it when a cancel cuts it short (s).
+        private const float SelfStimEntrySeconds = 0.25f;
+        private const float SelfStimCutSeconds = 0.3f;
+
+        // Takes a body lying prone (EFT's own animation, which the caller has already switched off) and plays a sequence on it that
+        // begins with the roll onto its back, placed so the roll ends the way the roll onto the front does: on the player's root, with
+        // its spine along their body yaw. Null when there is nothing to play.
+        public static DownedPose TryStartSelfStimFromProne(Player player, PlayerPoolObject pool, SelfStimSequence sequence, Vector3 root)
+        {
+            if (sequence == null || !sequence.FromProne) return null;
+            var pose = TryStart(player, pool, Opening.Loop, null);
+            if (pose == null) return null;
+            if (pose.PlaceForProneRoll(root, sequence.Yaw) && pose.BeginSelfStim(sequence)) return pose;
+            pose.Stop();
+            return null;
+        }
+
+        // Puts the body down for a roll onto the back that ends where the roll onto the front begins: the roll's last frame, played
+        // as the first, lies on `root` along `yaw`. The same placement GetUpState.Aim reaches at the end of the roll, held for all of it.
+        private bool PlaceForProneRoll(Vector3 root, float yaw)
+        {
+            var clip = BakedClip.GetUp;
+            if (clip == null || !_rig.Plays(clip)) return false;
+            float endSpineYaw = clip.SpineYaw(clip.Frames - 1);
+            if (float.IsNaN(endSpineYaw)) return false;
+
+            Quaternion facing = global::KeepMeAlive.Animation.Shared.MathUtil.Yaw(yaw - endSpineYaw);
+            _ground.SurfaceDirection = facing * Quaternion.Inverse(_facing) * _ground.SurfaceDirection;
+            _facing = facing;
+            Vector3 end = _facing * (clip.Pelvis[clip.Frames - 1] * _rig.Scale);
+            _pelvisStart = new Vector3(root.x - end.x, _pelvisStart.y, root.z - end.z);
+            _stimPlaced = true;
+            return true;
+        }
+
+        // Starts the sequence on this pose, blended in from the pose on screen. False when it cannot be played (a roll or a fall is
+        // playing, the clips do not share this rig).
+        public bool BeginSelfStim(SelfStimSequence sequence)
+        {
+            if (sequence == null || _getUp != null || IsPlayingFall) return false;
+            var clip = BakedClip.SelfStim;
+            if (clip == null || !_rig.Plays(clip) || (sequence.FromProne && !_rig.Plays(BakedClip.GetUp))) return false;
+
+            EndSelfStim();
+            _stim = sequence;
+            _stimHands = SelfStimHands.TryCreate(_player, Find(BoneNames.RightPalm));
+            _stimHandFrame = -1f;
+            _stimPen = false;
+            _stimNeedle = Needle.Out;
+            Recapture(SelfStimEntrySeconds);
+            RevivalDebugLog.LogDebug($"[DownedPose] Self-stim for {_player.ProfileId}: hold {sequence.HoldSeconds:F1}s, {(sequence.FromProne ? "from prone" : "on the back")}, " +
+                                     $"{sequence.TotalSeconds:F1}s of clips, hands {(_stimHands != null)}");
+            return true;
+        }
+
+        // The key was let go (SelfStimSequence.Cancel).
+        public void CancelSelfStim(float now) => _stim?.Cancel(now);
+
+        // The sequence is over, or cut short by a cancel or a get-up: its hand and pen go, the loop carries on.
+        public void EndSelfStim()
+        {
+            _stim = null;
+            _stimNeedle = Needle.Out;
+            _stimPen = false;
+            _stimHandFrame = -1f;
+            _stimHands?.Dispose();
+            _stimHands = null;
+        }
+
+        // Blends from the pose on screen into whatever plays next, over `seconds`.
+        private void Recapture(float seconds)
+        {
+            for (int k = 0; k < _rig.Count; k++) _captured[k] = _rig.Bones[k].localRotation;
+            _pelvisFrom = _pelvis.position;
+            _entrySeconds = seconds;
+            _sinceStart = 0f;
+        }
+
+        // The sequence's clip and time in it this frame. False once it is over (then the loop plays).
+        private bool TryStimClip(out BakedClip clip, out float at)
+        {
+            bool playing = _stim.Evaluate(Time.time, out clip, out at, out var segment, out float handFrame, out bool pen, out bool jumped);
+            if (jumped) Recapture(SelfStimCutSeconds);
+            if (!playing)
+            {
+                RevivalDebugLog.LogDebug($"[DownedPose] Self-stim over for {_player.ProfileId}");
+                EndSelfStim();
+                return false;
+            }
+            _stimHandFrame = handFrame;
+            _stimPen = pen;
+
+            // A hold too short for a hold segment goes straight from the takeout to the put away: that is one knock, the
+            // withdrawal, since the needle was in and out within a frame.
+            if (segment == SelfStimSequence.Segment.Hold && _stimNeedle == Needle.Out)
+            {
+                _stimNeedle = Needle.In;
+                DownedVoiceController.OnStimNeedle(_player);
+            }
+            else if (segment == SelfStimSequence.Segment.PutAway && _stimNeedle != Needle.Withdrawn)
+            {
+                _stimNeedle = Needle.Withdrawn;
+                DownedVoiceController.OnStimNeedle(_player);
+            }
+            return true;
         }
 
         //====================[ Root Anchor ]====================
@@ -480,6 +610,8 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             // Not while the fall (or the settle) plays, nor over the roll: it aims at the root itself.
             if (_getUp != null || (_fall != null && _elapsed < _fall.Duration)) return;
+            // Nor over the self-stim sequence, nor after its roll put the body down from the root.
+            if (_stim != null || _stimPlaced) return;
             if (_player == null || !RMSession.TryGetPlayerState(_player.ProfileId, out var st)) return;
 
             Vector3 want;
@@ -524,10 +656,12 @@ namespace KeepMeAlive.Gameplay.Downed
             _elapsed += Time.deltaTime;
             _sinceStart += Time.deltaTime;
             CaptureAnimatedChest();
+            CaptureGameView();
             try
             {
                 AnchorToRoot();
                 Pose(_elapsed);
+                _stimHands?.Apply(_stim != null ? _stimHandFrame : -1f, _stim != null && _stimPen, Time.deltaTime);
                 _motion.Record();
                 FollowCamera(null);
             }
@@ -563,6 +697,30 @@ namespace KeepMeAlive.Gameplay.Downed
             HasAnimatedChest = true;
         }
 
+        // While rolling, the game's view as the game has it this frame: the body animator runs under the roll (WarmAnimator)
+        // and this reads before Pose writes the bones, so Spine3 and the CameraPosition under it are the game's.
+        private void CaptureGameView()
+        {
+            _hasGameView = false;
+            if (_getUp == null || _player == null || !_player.IsYourPlayer) return;
+            var view = _player.CameraPosition;
+            if (view == null) return;
+            _gameViewPosition = view.position;
+            _gameViewRotation = view.rotation;
+            _hasGameView = true;
+        }
+
+        // How far the camera has slid from the head to the game's view (0 to 1, eased in and out): 0 until
+        // RollCameraSlideStart into the roll, 1 at its end and while it holds its last frame.
+        private float RollCameraSlide()
+        {
+            if (_getUp == null || !_hasGameView) return 0f;
+            float duration = _getUp.Clip.Duration;
+            if (duration <= 0f) return 1f;
+            float through = Mathf.Clamp01(_elapsed / duration);
+            return Mathf.SmoothStep(0f, 1f, (through - RollCameraSlideStart) / (1f - RollCameraSlideStart));
+        }
+
         private void FollowCamera(Camera camera)
         {
             try
@@ -576,7 +734,8 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (head == null) return;
                 // The pose lies on its back, but the game still has the player prone: its look would face the ground. So the
                 // view is the head's, as LocalBodyCamera has it for the ragdoll (and kept off walls the fall may carry it through).
-                LocalBodyCamera.Place(player, head, main);
+                // Over the end of the roll it slides to the game's own view.
+                LocalBodyCamera.Place(player, head, main, RollCameraSlide(), _gameViewPosition, _gameViewRotation);
             }
             catch (Exception ex)
             {
@@ -592,7 +751,11 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             BakedClip clip;
             float at;
-            if (_getUp != null)
+            if (_stim != null && TryStimClip(out clip, out at))
+            {
+                // The self-revive sequence: its clip and time, placed like any other.
+            }
+            else if (_getUp != null)
             {
                 clip = _getUp.Clip;
                 at = Mathf.Min(t, clip.Duration);
@@ -653,6 +816,8 @@ namespace KeepMeAlive.Gameplay.Downed
         // How fast the bone was moving over the last frame, for the ragdoll to carry on with.
         public bool TryGetVelocity(Transform bone, out Vector3 velocity, out Vector3 angularVelocity) =>
             _motion.TryGetVelocity(bone, out velocity, out angularVelocity);
+
+        private void OnDestroy() => _stimHands?.Dispose();
 
         // Stops playing and leaves the bones where they are.
         public void Stop()

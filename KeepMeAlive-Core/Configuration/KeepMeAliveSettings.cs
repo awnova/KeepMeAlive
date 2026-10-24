@@ -23,13 +23,6 @@ namespace KeepMeAlive.Configuration
         public static ConfigEntry<float> DOWNED_PULSE_MIN_STRENGTH;
         public static ConfigEntry<float> DOWNED_PULSE_OFFSET_MS;
 
-        // Debug / Diagnostics
-        public static ConfigEntry<bool> ENABLE_DEBUG_LOGS;
-        public static ConfigEntry<bool> DEBUG_REVIVE_FLOW;
-        public static ConfigEntry<bool> DEBUG_NETWORK_TRACE;
-        public static ConfigEntry<bool> DEBUG_SELF_REVIVE_TRACE;
-        public static ConfigEntry<bool> DEBUG_KEYBINDS;
-
         //====================[ Init ]====================
         public static void Init(ConfigFile config)
         {
@@ -97,42 +90,6 @@ namespace KeepMeAlive.Configuration
                 "Heartbeat Visual Offset (ms)",
                 0f,
                 new ConfigDescription("Shifts the visual pulse relative to the heartbeat sound. Positive = later, negative = earlier. Use if the pulse feels out of sync with the audio.", new AcceptableValueRange<float>(-100f, 150f), new ConfigurationManagerAttributes { IsAdvanced = true })
-            );
-
-            //====================[ Debug ]====================
-            ENABLE_DEBUG_LOGS = config.Bind(
-                "5. Development",
-                "Enable Debug Logs",
-                false,
-                new ConfigDescription("Enables debug logging output for revival systems", null, new ConfigurationManagerAttributes { IsAdvanced = true })
-            );
-
-            DEBUG_REVIVE_FLOW = config.Bind(
-                "5. Development",
-                "Debug Revive Flow",
-                false,
-                new ConfigDescription("Logs detailed revive flow transitions (requires Enable Debug Logs)", null, new ConfigurationManagerAttributes { IsAdvanced = true })
-            );
-
-            DEBUG_NETWORK_TRACE = config.Bind(
-                "5. Development",
-                "Debug Network Trace",
-                false,
-                new ConfigDescription("Logs revive-related network packet traces (requires Enable Debug Logs)", null, new ConfigurationManagerAttributes { IsAdvanced = true })
-            );
-
-            DEBUG_SELF_REVIVE_TRACE = config.Bind(
-                "5. Development",
-                "Debug Self Revive Trace",
-                false,
-                new ConfigDescription("Logs self-revive lifecycle details (requires Enable Debug Logs)", null, new ConfigurationManagerAttributes { IsAdvanced = true })
-            );
-
-            DEBUG_KEYBINDS = config.Bind(
-                "5. Development",
-                "Debug Keybinds",
-                false,
-                new ConfigDescription("Enables debug keybinds: F7=Enter Ghost Mode, F8=Exit Ghost Mode", null, new ConfigurationManagerAttributes { IsAdvanced = true })
             );
         }
     }

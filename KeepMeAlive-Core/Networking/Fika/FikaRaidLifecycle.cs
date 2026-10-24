@@ -35,6 +35,7 @@ namespace KeepMeAlive.Networking.Fika
             RevivePacketHandlers.Register(managerCreatedEvent.Manager);
             TeamHealPacketHandlers.Register(managerCreatedEvent.Manager);
             DragPacketHandlers.Register(managerCreatedEvent.Manager);
+            DefibPacketHandlers.Register(managerCreatedEvent.Manager);
         }
 
         //====================[ Raid Started — Local Setup + Attach Body Interactables ]====================

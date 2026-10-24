@@ -25,7 +25,7 @@ namespace KeepMeAlive.Patches
                 var player = __instance.Player;
                 if (player == null || player.IsAI || !player.IsYourPlayer) return true;
 
-                if (DeathMode.ShouldAllowDeathFromHardcoreHeadshot(player, __instance, damageType)
+                if (DeathMode.ShouldAllowDeathFromHeadshot(player, __instance, damageType)
                     || !DeathMode.ShouldBlockDeath(player, damageType))
                 {
                     DeathMode.OnLocalDeathAllowed(player, damageType);

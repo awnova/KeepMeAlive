@@ -35,6 +35,8 @@ namespace KeepMeAlive.Gameplay.Dragging
         public static void Hold()
         {
             if (_mc == null) return;
+            // The revive hold owns the look (its tight cone) and gives the drag's limit back when it ends.
+            if (_mc.OverridenState is CrouchHoldState) return;
             Vector2 wanted = Wanted();
             if (_mc._pitchTargetLimit != wanted) _mc.SetPitchSmoothly(wanted);
         }
@@ -44,6 +46,12 @@ namespace KeepMeAlive.Gameplay.Dragging
             var mc = _mc;
             _mc = null;
             if (mc == null) return;
+            // A revive hold running holds the cone now and would put the drag's limit back when it ends: it gets the player's own.
+            if (mc.OverridenState is CrouchHoldState hold)
+            {
+                hold.SetLimitsToRestore(_savedYawLimit, _savedPitchLimit);
+                return;
+            }
             mc.SetRotationLimit(_savedYawLimit, _savedPitchLimit);
         }
 

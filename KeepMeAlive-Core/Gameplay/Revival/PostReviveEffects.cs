@@ -5,10 +5,10 @@ using EFT.HealthSystem;
 
 namespace KeepMeAlive.Gameplay.Revival
 {
-    //====================[ ReviveItemCooldown Effect Types ]====================
-    internal interface IReviveItemCooldown : IHealthEffect { }
-    internal class ReviveItemCooldownEffect : ActiveHealthController.Effect, IReviveItemCooldown { }
-    internal class ReviveItemCooldownNetworkEffect : NetworkHealthController.Effect, IReviveItemCooldown { }
+    //====================[ DefibCooldown Effect Types ]====================
+    internal interface IDefibCooldown : IHealthEffect { }
+    internal class DefibCooldownEffect : ActiveHealthController.Effect, IDefibCooldown { }
+    internal class DefibCooldownNetworkEffect : NetworkHealthController.Effect, IDefibCooldown { }
 
     //====================[ PostReviveEffects ]====================
     // Single entry point for everything that happens to a player the moment revival completes.
@@ -70,7 +70,7 @@ namespace KeepMeAlive.Gameplay.Revival
         }
 
         //====================[ Body Part Restoration ]====================
-        private static void RestoreBodyParts(Player player, SyncedPostReviveSourceConfig cfg)
+        private static void RestoreBodyParts(Player player, SyncedReviveTypeConfig cfg)
         {
             if (!cfg.RestoreBodyParts) return;
 
@@ -141,28 +141,34 @@ namespace KeepMeAlive.Gameplay.Revival
         };
 
         //====================[ Effect Removal ]====================
-        // Removes active light and heavy bleeds from every body part; fresh wounds remain.
-        private static void RemoveBleeds(Player player, SyncedPostReviveSourceConfig cfg)
+        // Removes active light and/or heavy bleeds from every body part; fresh wounds remain.
+        private static void RemoveBleeds(Player player, SyncedReviveTypeConfig cfg)
         {
-            if (!cfg.RemoveBleeds) return;
+            if (!cfg.RemoveLightBleeds && !cfg.RemoveHeavyBleeds) return;
 
             var hc = player.ActiveHealthController;
             if (hc == null) return;
 
-            // Remove all standard heavy/light bleeds
-            hc.RemoveBleedingEffects(EBodyPart.Common);
+            bool light = cfg.RemoveLightBleeds, heavy = cfg.RemoveHeavyBleeds;
+            hc.ResidueEffectsWhere(EBodyPart.Common, effect =>
+                (light && effect is ILightBleeding) || (heavy && effect is IHeavyBleeding));
         }
 
-        // Removes fractures from limbs while preserving bleeds and other negative effects.
-        private static void RemoveFractures(Player player, SyncedPostReviveSourceConfig cfg)
+        // Removes fractures from the configured limbs while preserving bleeds and other negative effects.
+        private static void RemoveFractures(Player player, SyncedReviveTypeConfig cfg)
         {
-            if (!cfg.RemoveFractures) return;
+            if (!cfg.RemoveLegFractures && !cfg.RemoveArmFractures) return;
 
             var hc = player.ActiveHealthController;
             if (hc == null) return;
 
             for (int i = 0; i < FractureBodyParts.Length; i++)
-                hc.ResidueEffectsWhere(FractureBodyParts[i], effect => effect is IFracture);
+            {
+                var part = FractureBodyParts[i];
+                bool leg = part == EBodyPart.LeftLeg || part == EBodyPart.RightLeg;
+                if (leg ? !cfg.RemoveLegFractures : !cfg.RemoveArmFractures) continue;
+                hc.ResidueEffectsWhere(part, effect => effect is IFracture);
+            }
         }
 
         // Removes the downed-state contusion; ApplyDebuffs re-adds one only when the config asks for it.
@@ -180,7 +186,7 @@ namespace KeepMeAlive.Gameplay.Revival
         }
 
         //====================[ Post-Revival Debuffs ]====================
-        private static void ApplyDebuffs(Player player, SyncedPostReviveSourceConfig cfg)
+        private static void ApplyDebuffs(Player player, SyncedReviveTypeConfig cfg)
         {
             var hc = player.ActiveHealthController;
             if (hc == null) return;
@@ -216,14 +222,14 @@ namespace KeepMeAlive.Gameplay.Revival
             try
             {
                 RevivalDebugLog.LogDebug(
-                    $"[PostReviveEffects] Applying ReviveItemCooldown effect: hc={player.ActiveHealthController.GetType().Name}, workTime={cooldownDuration}");
-                var effect = player.ActiveHealthController.AddEffect<ReviveItemCooldownEffect>(
+                    $"[PostReviveEffects] Applying DefibCooldown effect: hc={player.ActiveHealthController.GetType().Name}, workTime={cooldownDuration}");
+                var effect = player.ActiveHealthController.AddEffect<DefibCooldownEffect>(
                     EBodyPart.Chest,
                     delayTime: null,
                     workTime: cooldownDuration,
                     residueTime: 3f);
                 RevivalDebugLog.LogDebug(
-                    $"[PostReviveEffects] ReviveItemCooldown applied: {effect?.GetType().Name}, Type={effect?.Type?.Name}, State={effect?.State}");
+                    $"[PostReviveEffects] DefibCooldown applied: {effect?.GetType().Name}, Type={effect?.Type?.Name}, State={effect?.State}");
             }
             catch (Exception ex)
             {

@@ -79,7 +79,7 @@ namespace KeepMeAlive.Gameplay.Revival
         private static IEnumerator ReviveAnimationCoroutine(Player player, RMPlayer st)
         {
             ReviveDebug.Log("ReviveEffects_Start", player.ProfileId, true, $"source={(ReviveSource)st.ReviveRequestedSource}");
-            if (SyncedServerConfigStore.Config.Gameplay.Revival.BlockUiWhenDowned) Hud.SetInputBlocked(true);
+            if (SyncedServerConfigStore.Config.Gameplay.Downed.BlockUiWhenDowned) Hud.SetInputBlocked(true);
             SetBlur(st, true);
             // Raise the command block before the weapon is drawn, not after the pose: otherwise the
             // player can fire, aim, reload and move for the whole draw.

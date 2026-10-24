@@ -13,7 +13,8 @@ namespace KeepMeAlive.Presentation.HUD
     //   status bar   (top)           bleed-out, being revived, reviving, invulnerable
     //   hold bar     (above strip)   self-revive, give-up, reviving a teammate, healing a teammate
     //   control strip (bottom)       the downed controls and what self-revive costs
-    // The same canvas carries the full-screen input blocker used while downed.
+    // The same canvas carries the full-screen input blocker used while downed, and the team-heal wheel (TeamHealWheelView),
+    // which this tick drives (TeamHealWheel.Tick) and whose controls take over the strip while it is open.
     // Timers are CustomTimer so callers keep the same contract as before: DownedStateController reads
     // st.CriticalStateMainTimer to drive CriticalTimer, and Stop() on a returned timer clears its bar.
     internal static class Hud
@@ -21,8 +22,9 @@ namespace KeepMeAlive.Presentation.HUD
         //====================[ Types ]====================
         internal enum StatusKind { Bleeding, BeingRevived, Reviving, Invulnerable }
         internal enum HoldKind { SelfRevive, GiveUp, ReviveTeammate, Heal }
-        internal enum StripState { Hidden, Available, NoLives, NeedsDefib, SelfReviveOff }
+        internal enum StripState { Hidden, Available, NoLives, NeedsStim, SelfReviveOff }
         internal enum SpectateHint { Hidden, Available, Active }
+        internal enum WheelStrip { Hidden, Categories, Items }
 
         //====================[ Constants ]====================
         // The game's UI font. Bender's bold, italic and bold-italic SDF assets are marked "DON'T USE!", so bold is
@@ -61,9 +63,13 @@ namespace KeepMeAlive.Presentation.HUD
         private const string BlockerName = "Blocker";
         private const string RootName = "KeepMeAlive_Hud";
 
-        private static readonly Color BarColor = new Color(13f / 255f, 15f / 255f, 17f / 255f, 0.88f);
-        private static readonly Color Red = Hex(0xE5484D);
-        private static readonly Color Green = Hex(0x38E07B);
+        // The palette is shared with the team-heal wheel (TeamHealWheelView).
+        internal static readonly Color BarColor = new Color(13f / 255f, 15f / 255f, 17f / 255f, 0.88f);
+        internal static readonly Color Red = Hex(0xE5484D);
+        internal static readonly Color Green = Hex(0x38E07B);
+        internal static readonly Color TextColor = Hex(0xE1DFD6);
+        internal static readonly Color GreyColor = Hex(0x9CA3AF);
+        internal static readonly Color DimColor = Hex(0x4B5563);
         private static readonly Color Cyan = Hex(0x4FD1E0);
         private static readonly Color Blue = Hex(0x5AA9FF);
         private const string GoldTag = "#E5B358";
@@ -105,6 +111,8 @@ namespace KeepMeAlive.Presentation.HUD
         private static bool _hintDrag, _hintRevive;
         private static SpectateHint _spectateHint = SpectateHint.Hidden;
         private static string _spectateName;
+        // While the team-heal wheel is open the strip is its controls only: which ring it shows.
+        private static WheelStrip _wheelStrip = WheelStrip.Hidden;
         private static bool _spectateHeadcam;
         private static bool _spectateNightVision;
         private static bool _inputBlocked;
@@ -118,6 +126,17 @@ namespace KeepMeAlive.Presentation.HUD
         //====================[ Public API: build ]====================
         // Builds the canvas and resolves the font. False until the game's UI exists.
         internal static bool Warmup() => EnsureBuilt();
+
+        // The canvas root and the font, for views drawn on the same canvas (the team-heal wheel). False without the font.
+        internal static bool TryGetLayer(out RectTransform root, out TMP_FontAsset font)
+        {
+            root = null;
+            font = null;
+            if (!EnsureBuilt() || _font == null) return false;
+            root = (RectTransform)_root.transform;
+            font = _font;
+            return true;
+        }
 
         //====================[ Public API: status ]====================
         // Starts the bleed-out countdown. The returned timer is the authority for the remaining time.
@@ -188,6 +207,12 @@ namespace KeepMeAlive.Presentation.HUD
 
         internal static void HideHold() => DropHold();
 
+        // Hides the hold bar only while it still shows the given timer, so a bar that replaced it stays.
+        internal static void HideHold(CustomTimer shown)
+        {
+            if (shown != null && ReferenceEquals(_holdTimer, shown)) DropHold();
+        }
+
         //====================[ Public API: control strip ]====================
         internal static void SetStrip(StripState state, int cost = 0)
         {
@@ -233,6 +258,10 @@ namespace KeepMeAlive.Presentation.HUD
             _spectateNightVision = nightVision;
         }
 
+        internal static void SetWheelStrip(WheelStrip strip) => _wheelStrip = strip;
+
+        internal static void ClearWheelStrip() => _wheelStrip = WheelStrip.Hidden;
+
         internal static void HideStrip()
         {
             _stripState = StripState.Hidden;
@@ -272,6 +301,7 @@ namespace KeepMeAlive.Presentation.HUD
             DropBleed();
             DropHold();
             HideStrip();
+            ClearWheelStrip();
         }
 
         //====================[ Timer slots ]====================
@@ -326,6 +356,8 @@ namespace KeepMeAlive.Presentation.HUD
 
                 if (_status == null) return; // no font: nothing to draw
 
+                TeamHealWheel.Tick();
+
                 float pulse = 0.675f + 0.325f * Mathf.Cos(Time.unscaledTime / PulseSeconds * Mathf.PI * 2f);
                 RenderStatus(pulse);
                 RenderHold();
@@ -339,7 +371,7 @@ namespace KeepMeAlive.Presentation.HUD
 
         // Esc menu and Settings share CommonUI with EftBattleUIScreen; stepping the blocker aside when BattleUI is not
         // the current screen keeps menus clickable regardless of canvas sortingOrder.
-        private static bool IsBattleUiActive()
+        internal static bool IsBattleUiActive()
         {
             var mgr = EFT.UI.Screens.EftScreenManager.Instance;
             return mgr == null || mgr.CheckCurrentScreen(EFT.UI.Screens.EEftScreenType.BattleUI);
@@ -554,6 +586,12 @@ namespace KeepMeAlive.Presentation.HUD
 
         private static void RenderStrip()
         {
+            if (_wheelStrip != WheelStrip.Hidden)
+            {
+                RenderWheelStrip();
+                return;
+            }
+
             bool hiddenByStatus = _overlayKind == StatusKind.BeingRevived || _overlayKind == StatusKind.Reviving;
             bool hint = _stripState == StripState.Hidden && _hintKey != null;
             if ((_stripState == StripState.Hidden && !hint) || hiddenByStatus)
@@ -573,6 +611,22 @@ namespace KeepMeAlive.Presentation.HUD
                 _stripKey = key;
                 _strip.SetText(BuildStripText(selfKey, giveUpKey), true);
             }
+        }
+
+        // The wheel's mouse controls: "[ LMB ] OPEN  [ RMB ] CLOSE" on the categories, "[ LMB ] USE  [ RMB ] BACK" on the items.
+        private static void RenderWheelStrip()
+        {
+            _strip.SetActive(true);
+            string key = $"Wheel|{_wheelStrip}";
+            if (key == _stripKey) return;
+            _stripKey = key;
+
+            bool items = _wheelStrip == WheelStrip.Items;
+            var sb = new System.Text.StringBuilder(120);
+            KeyItem(sb, "LMB", items ? PlayerFacingMessages.HealWheel.Use : PlayerFacingMessages.HealWheel.Open);
+            sb.Append("<space=1.8em>");
+            KeyItem(sb, "RMB", items ? PlayerFacingMessages.HealWheel.Back : PlayerFacingMessages.HealWheel.Close);
+            _strip.SetText(sb.ToString(), true);
         }
 
         private static string BuildStripText(KeyCode selfKey, KeyCode giveUpKey)
@@ -658,8 +712,8 @@ namespace KeepMeAlive.Presentation.HUD
                 case StripState.NoLives:
                     Chip(sb, PlayerFacingMessages.HudLabels.NeedsLives(_stripCost), Red.ToHex());
                     break;
-                case StripState.NeedsDefib:
-                    Chip(sb, PlayerFacingMessages.HudLabels.NeedsDefibrillator, Red.ToHex());
+                case StripState.NeedsStim:
+                    Chip(sb, PlayerFacingMessages.HudLabels.NeedsStim, Red.ToHex());
                     break;
             }
         }

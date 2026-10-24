@@ -40,7 +40,7 @@ namespace KeepMeAlive.Gameplay.Revival
 
             // Force hands to equip something if they are empty or stuck in a non-weapon state.
             // I defer this to a coroutine to wait out any in-flight inventory operation.
-            // (e.g. a self-revive item still being consumed) before racing another equip
+            // (e.g. a self-defib still being consumed) before racing another equip
             // against it - see RestorePlayerWeaponCoroutine.
             if (!(player.HandsController is IFirearmHandsController))
             {

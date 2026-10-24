@@ -137,7 +137,7 @@ namespace KeepMeAlive.Patches
                 _plate.playerNameScreen.color = Color.green;
                 _plate.playerNameScreen.SetText(RevivingText);
                 _reviveElapsed = 0f;
-                _reviveDuration = RevivePolicy.GetProgressDuration((ReviveSource)st.ReviveRequestedSource);
+                _reviveDuration = RevivePolicy.ProgressSeconds;
             }
 
             _shownState = st.State;
@@ -175,7 +175,7 @@ namespace KeepMeAlive.Patches
                     _bleedRemaining -= deltaTime;
                 }
 
-                var total = SyncedServerConfigStore.Config.Gameplay.Revival.CriticalStateSeconds;
+                var total = SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds;
                 fill = total > 0f ? Mathf.Clamp01(_bleedRemaining / total) : 0f;
                 barColor = Color.red;
             }

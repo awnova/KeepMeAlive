@@ -15,7 +15,7 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
     //====================[ Constants ]====================
     private const string TraderAssortItemId = "60dc0d93a66c41234a80aeff";
     private const string ItemDescription =
-        "A portable revive item used to revive yourself or others from critical condition. When in critical state, hold your configured revive key to get a second chance.";
+        "A portable defib used to revive yourself or others from critical condition. When in critical state, hold your configured revive key to get a second chance.";
 
     private static readonly string[] PocketTemplateIds =
     {
@@ -29,7 +29,7 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
         try
         {
             PatchTraderAssort();
-            PatchRevivalItemTemplate();
+            PatchDefibTemplate();
             PatchItemDescription();
             PatchSpecialSlotFilters();
 
@@ -44,8 +44,8 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
     //====================[ Patch Steps ]====================
     private void PatchTraderAssort()
     {
-        var trading = configService.Config.RevivalItem.Trading;
-        string traderId = ResolveTraderId(trading.Trader);
+        var trading = configService.Config.Defib.Trading;
+        const string traderId = TraderConstants.TherapistTraderId;
         int price = trading.AmountRoubles;
         string templateId = GetReviveTemplateId();
 
@@ -92,26 +92,29 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
         // trader and resell on the flea for profit indefinitely.
         if (templateTable.Prices != null && templateTable.Prices.TryGetValue(templateId, out var fleaBase) && price < fleaBase)
         {
-            logger.Warning($"[KeepMeAlive.Server] Revive item trader price ({price}) is below its flea base price ({fleaBase:0}); players can resell it for profit.");
+            logger.Warning($"[KeepMeAlive.Server] Defib trader price ({price}) is below its flea base price ({fleaBase:0}); players can resell it for profit.");
         }
 
-        logger.Info($"[KeepMeAlive.Server] Revive item injected into trader assort. Trader={traderId}, Price={price}, LL={trading.LoyaltyLevel}");
+        logger.Info($"[KeepMeAlive.Server] Defib injected into trader assort. Trader={traderId}, Price={price}, LL={trading.LoyaltyLevel}");
     }
 
-    private void PatchRevivalItemTemplate()
+    private void PatchDefibTemplate()
     {
         string templateId = GetReviveTemplateId();
         if (!templateTable.Items.TryGetValue(templateId, out var item) || item?.Properties is null)
         {
-            logger.Warning($"[KeepMeAlive.Server] Revive item template {templateId} not found.");
+            logger.Warning($"[KeepMeAlive.Server] Defib template {templateId} not found.");
             return;
         }
 
-        if (configService.Config.RevivalItem.ResizeTo2x1 && item.Properties.Width != null && item.Properties.Height != null)
+        if (configService.Config.Defib.ResizeTo2x1 && item.Properties.Width != null && item.Properties.Height != null)
         {
             item.Properties.Width = 2;
             item.Properties.Height = 1;
         }
+
+        // Barter items always carry a ResourceComponent; a MaxResource above 0 makes the game draw its stock "uses" counter.
+        item.Properties.MaxResource = configService.Config.Defib.Uses;
     }
 
     // The in-game description comes from the "<tpl> Description" locale key, not the template.
@@ -141,7 +144,7 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
     }
 
     //====================[ Slot Filter Helpers ]====================
-    // Adds the revive item template to SpecialSlot filters, which live in Props.Slots
+    // Adds the defib template to SpecialSlot filters, which live in Props.Slots
     // (not Grids) of pocket templates.
     private void PatchSlotFilters(string templateId, string reviveTemplateId)
     {
@@ -171,22 +174,5 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
         }
     }
 
-    //====================[ Trader Resolution ]====================
-    private string ResolveTraderId(string trader)
-    {
-        if (TraderConstants.TraderIdByName.TryGetValue(trader, out var traderId))
-        {
-            return traderId;
-        }
-
-        if (trader.Length == 24 && tradersTable.GetTrader(trader) is not null)
-        {
-            return trader;
-        }
-
-        logger.Warning($"[KeepMeAlive.Server] Unknown trader '{trader}' in config; falling back to Therapist.");
-        return TraderConstants.TraderIdByName["Therapist"];
-    }
-
-    private string GetReviveTemplateId() => configService.Config.RevivalItem.TemplateId;
+    private string GetReviveTemplateId() => TraderConstants.DefibTemplateId;
 }

@@ -23,8 +23,11 @@ namespace KeepMeAlive.Animation.Ragdoll
 
             // A revive (or the end of one) on the local player: the revive poses the first person arms (the defibrillator,
             // the item in hand, the inventory pose), which the roll would write over for its whole length. The body goes
-            // back to the game at once; a limp ended by crawling still rolls.
-            if (player.IsYourPlayer && RMSession.TryGetPlayerState(player.ProfileId, out var st) && st.State != RMState.BleedingOut)
+            // back to the game at once; a limp ended by crawling still rolls. Not a self revive, which has played the self-stim
+            // on the body and rolls it onto its front for the revive's progress, the camera on the head as for the rest of the
+            // downed body; its arms are the body's (SelfStimHands).
+            if (player.IsYourPlayer && RMSession.TryGetPlayerState(player.ProfileId, out var st) && st.State != RMState.BleedingOut
+                && !(st.State == RMState.Reviving && (ReviveSource)st.ReviveRequestedSource == ReviveSource.Self))
             {
                 Exit(session);
                 return;

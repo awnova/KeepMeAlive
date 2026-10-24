@@ -59,6 +59,13 @@ namespace KeepMeAlive.Gameplay.Downed
 
         public static bool IsActive(Player player) => player?.CurrentState is CrouchHoldState;
 
+        // The limits the look gets back when the hold ends, when something that held them before the hold lets go during it.
+        public void SetLimitsToRestore(Vector2 yawLimit, Vector2 pitchLimit)
+        {
+            _savedYawLimit = yawLimit;
+            _savedPitchLimit = pitchLimit;
+        }
+
         //====================[ State ]====================
         public override void Enter(bool isFromSameState)
         {

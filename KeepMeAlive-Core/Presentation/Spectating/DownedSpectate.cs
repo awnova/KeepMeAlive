@@ -131,11 +131,14 @@ namespace KeepMeAlive.Presentation.Spectating
 
         // The one way out. Normal puts everything back; Death puts the first person view back so the death view and
         // Fika's own spectate start from the usual state; Yield leaves the view, point of view and vision to Fika.
+        // Whatever the reason, an exit while Fika's camera has the view is a Yield: putting the first person view back
+        // under it would break Fika's spectate.
         private static void Exit(ExitKind kind, string reason)
         {
             var player = _player;
             var cam = _cam;
             bool wasActive = cam != null;
+            if (kind != ExitKind.Yield && wasActive && SpectateFika.FikaCamActive()) kind = ExitKind.Yield;
 
             _cam = null;
             _player = null;
@@ -238,6 +241,8 @@ namespace KeepMeAlive.Presentation.Spectating
         public static void HandleInput()
         {
             if (!IsActive || Time.frameCount == _enteredFrame || ConsoleVisible()) return;
+            // Fika's camera reads the same keys; once it has the view they are its own (Tick gives way this tick).
+            if (SpectateFika.FikaCamActive()) return;
 
             if (UnityEngine.Input.GetKeyDown(ReturnKey)) Exit(ExitKind.Normal, "returned to body");
             else if (UnityEngine.Input.GetKeyDown(NextKey)) Cycle(1);

@@ -56,7 +56,6 @@ namespace KeepMeAlive.Gameplay.Dragging
         private static float _nextHeadingSend;
 
         public static bool IsLocalDragging => !string.IsNullOrEmpty(_draggingId);
-        public static bool IsLocalDraggingBody(string reviveeId) => IsLocalDragging && _draggingId == reviveeId;
 
         // The local player is picking a body up: held in place, stance and hands locked, until it is lifted.
         public static bool IsPickupLocked => TryGetLocalSession(out var session) && !session.IsHeld;
@@ -140,13 +139,12 @@ namespace KeepMeAlive.Gameplay.Dragging
         }
 
         //====================[ Put Down ]====================
-        // Whoever lets go of a lifted body (the dragger; the owner when the dragger can no longer) is the one word on where
-        // it comes to rest: the release says the body is down and who will say where; that peer watches its own ragdoll of
-        // the body settle (it has the best view of the hands, and of the drop) and then says where it lies (DropRestPacket).
-        // Every peer's body eases onto that, and the owner's real body goes under it. Both packets come from the same
-        // sender, so the word on where always comes after the release.
-        // How long every peer waits for that word before the body is eased onto the real root instead (s): longer than any
-        // drop takes to settle; a declarer that died or left before its ragdoll settled never says.
+        // The peer that releases a lifted body reports where it settles. The release names that peer; it watches its
+        // ragdoll settle, then sends the resting position (DropRestPacket). Every peer moves its copy to that position,
+        // and the owner moves the real body underneath it. Both packets come from the same sender, so the rest report
+        // follows the release.
+        // Wait this long for the report before anchoring the body to the owner's root. This exceeds normal settling time;
+        // if the reporting peer leaves or dies first, no report arrives.
         internal const float DropRestWaitSeconds = 10f;
 
         // The body this client let go of and is to say where it comes to rest, and until when.
@@ -557,9 +555,20 @@ namespace KeepMeAlive.Gameplay.Dragging
         //====================[ Dragger: Revive ]====================
         // The body in the dragger's hands has no context menu; the interact key held revives it (stim jab, DraggerArms).
         // The press is consumed by DraggerReviveInputPatch; the release ends the hold as it does any other.
+        // Fastest the dragger may still be moving when the revive hold starts (m/s).
+        private const float MaxReviveStartSpeed = 0.1f;
+
         public static bool TryBeginReviveHold(GamePlayerOwner owner)
         {
             if (!IsLocalHoldingBody || RMSession.IsPlayerCritical(owner.Player.ProfileId)) return false;
+
+            // The game is back in Idle while the dragger is still sliding to a stop; the sudden freeze of the hold would swing the
+            // body in their hands past the roll limit and drop it. A hold already running ignores the press (OnRevive).
+            if (!CrouchHoldState.IsActive(owner.Player) && owner.Player.Velocity.magnitude > MaxReviveStartSpeed)
+            {
+                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.CannotReviveWhileMoving);
+                return true;
+            }
 
             if (BodyInteractableRuntime.TryGet(_draggingId, out var body)) body.RequestRevive(owner);
             return true;
@@ -578,9 +587,8 @@ namespace KeepMeAlive.Gameplay.Dragging
             }
 
             var st = RMSession.GetPlayerState(_draggingId);
-            var cfg = SyncedServerConfigStore.Config.Gameplay;
-            int cost = cfg.Revival.TeamReviveLivesCost;
-            var state = !cfg.Development.NoReviveItemRequired && !ModUtils.HasReviveItem(dragger) ? Hud.StripState.NeedsDefib
+            int cost = RevivePolicy.LivesCost(ReviveSource.Team);
+            var state = !RevivePolicy.HasRequiredItem(ReviveSource.Team, dragger) ? Hud.StripState.NeedsStim
                 : st.LivesRemaining < cost ? Hud.StripState.NoLives
                 : Hud.StripState.Available;
 

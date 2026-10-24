@@ -6,8 +6,8 @@ using UnityEngine;
 namespace KeepMeAlive.Animation.Hands
 {
     //====================[ HoldGrip ]====================
-    // The dragger's fingers closed round the dragged body's shoulders (Tools/DragPose/bake_hold_grip.py from
-    // Assets/Downed/Drag_Hold_Pose.blend, the fingers fitted against the body's mesh by fit_hold_grip.py): for each hand its finger
+    // The dragger's fingers closed round the dragged body's shoulders (Build/Tools/DragPose/bake_hold_grip.py from
+    // Build/Assets/Downed/Drag_Hold_Pose.blend, the fingers fitted against the body's mesh by fit_hold_grip.py): for each hand its finger
     // bones (parents first) and each one's rotation relative to the hand's knuckle frame, from its rest pose, the encoding HandFingers
     // puts onto the game's own skeleton. A hand on the body holds this pose (DraggerArms); the stim jab's fingers take over on the
     // right hand while it plays.

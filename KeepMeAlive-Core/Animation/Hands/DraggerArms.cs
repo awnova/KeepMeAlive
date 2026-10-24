@@ -65,7 +65,7 @@ namespace KeepMeAlive.Animation.Hands
         private const float ElbowBackLean = 0.5f;
         // First person only: an elbow or upper arm nearer the camera than this swings away from it (m).
         private const float CameraClearance = 0.3f;
-        // The hand on the shoulder, laid out in Blender (Tools/DragPose/make_drag_pose.py, Assets/Downed/Drag_Hold_Pose.blend): the knuckle line
+        // The hand on the shoulder, laid out in Blender (Build/Tools/DragPose/make_drag_pose.py, Build/Assets/Downed/Drag_Hold_Pose.blend): the knuckle line
         // on the body's swing point (each shoulder joint DragGrip.SwingHeight, 8.2 cm, up its spine: the top of the shoulder), the palm
         // pressing the shoulder (the surface there faces up the spine), the fingers curled like a grip on the cloth (HoldGrip) and
         // pointing toward the chest front. The angle (degrees), from fingers carrying straight on from the arm with the palm flat on the
@@ -227,6 +227,8 @@ namespace KeepMeAlive.Animation.Hands
         // The body was dropped: the hand carries on back from where the body was (its chest frame as it was), not from
         // wherever the body goes now.
         private bool _stimFrozen;
+        // The needle is in the body (the hand reached the jab and has not pulled back yet).
+        private bool _stimNeedleIn;
         private Vector3 _frozenPosition;
         private Quaternion _frozenRotation = Quaternion.identity;
         // The clip as sampled this frame.
@@ -660,6 +662,8 @@ namespace KeepMeAlive.Animation.Hands
                 RevivalDebugLog.LogDebug($"[DraggerArms] stim jab {_draggerId}: revive cancelled at frame {_stimFrame:F1}");
             }
 
+            PullNeedle();
+
             float step = Time.deltaTime * clip.Fps;
             switch (_stim)
             {
@@ -669,6 +673,8 @@ namespace KeepMeAlive.Animation.Hands
                     {
                         _stimFrame = clip.Jab;
                         _stim = StimPhase.Held;
+                        _stimNeedleIn = true;
+                        DownedVoiceController.OnStimNeedle(_revivee);
                     }
                     break;
                 case StimPhase.Held:
@@ -691,6 +697,14 @@ namespace KeepMeAlive.Animation.Hands
             clip.Sample(_stimFrame, out _stimBody, out _stimChest, out _stimChestWeight, _fingerPose);
         }
 
+        // The hand starts back with the needle in the body: it comes out, once per jab.
+        private void PullNeedle()
+        {
+            if (_stim != StimPhase.Back || !_stimNeedleIn) return;
+            _stimNeedleIn = false;
+            DownedVoiceController.OnStimNeedle(_revivee);
+        }
+
         // The revive's claim on the body is gone while the body is still bleeding out: it was cancelled.
         private bool ClaimGone() =>
             Time.time - _stimBegan > StimClaimGrace
@@ -706,6 +720,7 @@ namespace KeepMeAlive.Animation.Hands
         private void DisposeStim()
         {
             _stim = StimPhase.None;
+            _stimNeedleIn = false;
             _pen?.Destroy();
             _pen = null;
         }

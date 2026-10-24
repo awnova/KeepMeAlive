@@ -42,9 +42,9 @@ namespace KeepMeAlive
             KeepMeAliveSettings.Init(Config);
             SyncedServerConfigStore.Load();
 
-            // Register ReviveItemCooldown effect types into EFT's reflection-based type registries.
+            // Register DefibCooldown effect types into EFT's reflection-based type registries.
             // Must run before any health controllers are instantiated.
-            RegisterReviveItemCooldownEffectTypes();
+            RegisterDefibCooldownEffectTypes();
 
             EnableCorePatches();
             EnableGhostModePatches();
@@ -72,7 +72,7 @@ namespace KeepMeAlive
             new DownedInventoryScreenBlockPatch().Enable();
             new DownedApplyItemBlockPatch().Enable();
             new DownedQuickSlotSelectorBlockPatch().Enable();
-            new SpecialSlotReviveItemPatch().Enable();
+            new SpecialSlotDefibPatch().Enable();
             new FikaOverlayPatch().Enable();
             new FikaHealthBarUpdateHealthPatch().Enable();
             new DownedPlayerLootPatch().Enable();
@@ -81,6 +81,8 @@ namespace KeepMeAlive
             new TeamHealUseTimePatch().Enable();
             new SilentInventoryCommandBlockPatch().Enable();
             new DraggerReviveInputPatch().Enable();
+            new TeamHealWheelCommandPatch().Enable();
+            new TeamHealWheelLookPatch().Enable();
             new TinnitusCapPatch().Enable();
             new DownedBreathPatch().Enable();
             new LocalOnlyPhrasePatch().Enable();
@@ -121,30 +123,30 @@ namespace KeepMeAlive
             }
         }
 
-        //====================[ ReviveItemCooldown Type Registration ]====================
-        // Registers ReviveItemCooldown effect types into EFT's three reflection-based registries
+        //====================[ DefibCooldown Type Registration ]====================
+        // Registers DefibCooldown effect types into EFT's three reflection-based registries
         // so the effect can be serialized/deserialized over Fika's health sync network.
-        private static void RegisterReviveItemCooldownEffectTypes()
+        private static void RegisterDefibCooldownEffectTypes()
         {
             try
             {
-                LogSource.LogInfo("[Plugin] Registering ReviveItemCooldown effect types...");
-                RegisterEffectSenderType(typeof(ReviveItemCooldownEffect));
-                RegisterEffectReceiverType(senderType: typeof(ReviveItemCooldownEffect), receiverType: typeof(ReviveItemCooldownNetworkEffect));
-                HealthHelper._effectNames[typeof(IReviveItemCooldown)] = "ReviveItemCooldown";
+                LogSource.LogInfo("[Plugin] Registering DefibCooldown effect types...");
+                RegisterEffectSenderType(typeof(DefibCooldownEffect));
+                RegisterEffectReceiverType(senderType: typeof(DefibCooldownEffect), receiverType: typeof(DefibCooldownNetworkEffect));
+                HealthHelper._effectNames[typeof(IDefibCooldown)] = "DefibCooldown";
 
                 // Verify
                 var dict0 = (Dictionary<string, byte>)AccessTools.Field(typeof(HealthHelper.EffectTypeCode), "_typeToByte").GetValue(null);
                 var closedType = typeof(HealthHelper.EffectActivator<>).MakeGenericType(typeof(NetworkHealthController));
                 var recvDict = (Dictionary<string, Func<object>>)AccessTools.Field(closedType, "_constructors").GetValue(null);
                 LogSource.LogInfo(
-                    $"[Plugin] ReviveItemCooldown registered - sender: {dict0.ContainsKey(nameof(ReviveItemCooldownEffect))}, " +
-                    $"receiver: {recvDict.ContainsKey(nameof(ReviveItemCooldownEffect))}, " +
-                    $"interface: {HealthHelper._effectNames.ContainsKey(typeof(IReviveItemCooldown))}");
+                    $"[Plugin] DefibCooldown registered - sender: {dict0.ContainsKey(nameof(DefibCooldownEffect))}, " +
+                    $"receiver: {recvDict.ContainsKey(nameof(DefibCooldownEffect))}, " +
+                    $"interface: {HealthHelper._effectNames.ContainsKey(typeof(IDefibCooldown))}");
             }
             catch (Exception ex)
             {
-                LogSource.LogError($"[Plugin] ReviveItemCooldown type registration failed: {ex}");
+                LogSource.LogError($"[Plugin] DefibCooldown type registration failed: {ex}");
             }
         }
 

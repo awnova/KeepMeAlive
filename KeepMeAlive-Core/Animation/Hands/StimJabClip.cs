@@ -7,7 +7,7 @@ namespace KeepMeAlive.Animation.Hands
 {
     //====================[ StimJabClip ]====================
     // The dragger's right hand taking a stim pen from their chest and jabbing it into the dragged body's shoulder
-    // (Tools/DragPose/bake_stim_jab.py from Assets/Downed/Drag_Stim_Jab.blend). Only the hand is baked: where the palm is
+    // (Build/Tools/DragPose/bake_stim_jab.py from Build/Assets/Downed/Drag_Stim_Jab.blend). Only the hand is baked: where the palm is
     // and which way it faces, the finger bones, and the pen. The arm is not; DraggerArms reaches the palm to where this puts
     // it and the arm follows.
     // The palm's place is given twice, as numbers along named physical axes so it means the same on any skeleton: in the

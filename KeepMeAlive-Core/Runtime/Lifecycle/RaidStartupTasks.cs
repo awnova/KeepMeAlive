@@ -16,7 +16,7 @@ namespace KeepMeAlive.Runtime.Lifecycle
         {
             // Read the server's per-raid lives value asynchronously.
             var st = RMSession.GetPlayerState(localPlayer.ProfileId);
-            st.LivesRemaining = SyncedServerConfigStore.Config.Gameplay.Revival.MaxLivesPerRaid;
+            st.LivesRemaining = SyncedServerConfigStore.Config.Gameplay.Downed.MaxLivesPerRaid;
             Plugin.StaticCoroutineRunner.StartCoroutine(FetchLivesCoroutine(localPlayer.ProfileId));
 
             WarnIfFikaReviveEnabled();
@@ -26,10 +26,10 @@ namespace KeepMeAlive.Runtime.Lifecycle
             // The defibrillator's track and paddles, built now so the first revive does not hitch.
             DefibHands.Preload();
 
-            // Inject reviveItem icon eagerly so FikaHealthBar nameplates can show it.
+            // Inject defib icon eagerly so FikaHealthBar nameplates can show it.
             // FikaHealthBar.AddEffect() looks up effect.Type in _effectIcons when
             // EffectAddedEvent fires. Injection starts here and completes after hard settings load.
-            ReviveItemCooldownIcon.EnsureIconInjected();
+            DefibCooldownIcon.EnsureIconInjected();
 
             // Initialize UI panel references during raid load.
             Plugin.StaticCoroutineRunner.StartCoroutine(WarmupUiPanelsCoroutine());

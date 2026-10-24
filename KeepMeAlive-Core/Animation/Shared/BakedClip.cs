@@ -8,7 +8,7 @@ using UnityEngine;
 namespace KeepMeAlive.Animation.Shared
 {
     //====================[ BakedClip ]====================
-    // A clip baked by Tools/DownedFall/bake_blender_fall.py, skeleton independent: per bone, the world rotation change
+    // A clip baked by Build/Tools/DownedFall/bake_blender_fall.py, skeleton independent: per bone, the world rotation change
     // since the reference frame, in the character frame (+Z facing, +Y up), and the direction the bone points in at
     // the reference frame; plus the pelvis travel. ClipRig puts it onto a player's skeleton. Clips baked against the
     // same reference (the ragdoll loop against the fall's first frame) play on the same rig, and one carries on from
@@ -40,18 +40,22 @@ namespace KeepMeAlive.Animation.Shared
         //====================[ Clips ]====================
         // Played on a remote player's body as they go down (DownedPose).
         public static BakedClip Fall => Get("KeepMeAlive.Resources.downed_fall.json");
-        // The same fall from a crouch (Assets/Downed/CrouchToFall.blend): it starts crouched and ends on the fall's last
+        // The same fall from a crouch (Build/Assets/Downed/CrouchToFall.blend): it starts crouched and ends on the fall's last
         // frame, so the loop carries on from either.
         public static BakedClip CrouchFall => Get("KeepMeAlive.Resources.downed_crouch_fall.json");
         // Played on the body once it lies there (DownedPose). Starts where the fall ends and its last frame is its
         // first.
         public static BakedClip Loop => Get("KeepMeAlive.Resources.downed_loop.json");
         // Played when a body a teammate let go of has settled on its back (DownedPose): from the muscle pose the ragdoll
-        // lies in (Tools/DownedFall/make_settle_clip.py) to the loop's first frame, so the loop carries on from it.
+        // lies in (Build/Tools/DownedFall/make_settle_clip.py) to the loop's first frame, so the loop carries on from it.
         public static BakedClip Settle => Get("KeepMeAlive.Resources.downed_settle.json");
         // Played on the body when the player takes it back (DownedPose): a roll from the loop's first frame onto the
         // front, ending in EFT's prone pose.
         public static BakedClip GetUp => Get("KeepMeAlive.Resources.downed_getup.json");
+        // Played on a body lying on its back while its owner stabs themselves with a stim pen (SelfStimSequence): the takeout and
+        // the jab, the hold (a loop) and the put away, from and back to the loop's first frame (Build/Assets/Downed/Self_Stim.blend).
+        // The right hand's fingers and the pen are SelfStimHandClip.
+        public static BakedClip SelfStim => Get("KeepMeAlive.Resources.self_stim.json");
         // Loaded on first use; null (logged once) when it cannot be.
         private static BakedClip Get(string resource) => EmbeddedData.Get(resource, nameof(BakedClip), () => Load(resource));
 

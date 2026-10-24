@@ -21,13 +21,13 @@
     <EmbeddedResource Include="Resources\downed_loop.json" />
     <EmbeddedResource Include="Resources\downed_getup.json" />
     <EmbeddedResource Include="Resources\downed_settle.json" />
+    <EmbeddedResource Include="Resources\self_stim.json" />
+    <EmbeddedResource Include="Resources\self_stim_hand.json" />
     <EmbeddedResource Include="Resources\defib_hands.json" />
     <EmbeddedResource Include="Resources\defib_paddles.json" />
-    <EmbeddedResource Include="Resources\defib_paddle_basecolor.png" />
     <EmbeddedResource Include="Resources\drag_stim_jab.json" />
     <EmbeddedResource Include="Resources\drag_hold_grip.json" />
     <EmbeddedResource Include="Resources\stim_pen.json" />
-    <EmbeddedResource Include="Resources\stim_pen_basecolor.png" />
     <EmbeddedResource Include="Resources\stim_pen.bundle" />
     <EmbeddedResource Include="Resources\defib_paddles.bundle" />
   </ItemGroup>

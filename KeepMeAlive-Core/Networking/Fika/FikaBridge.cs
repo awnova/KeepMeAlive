@@ -96,6 +96,20 @@ namespace KeepMeAlive.Networking.Fika
             SendPacket(ref packet);
         }
 
+        public static void SendSelfStimPacket(string playerId, float holdSeconds, float yaw)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending self stim packet for {playerId}: hold {holdSeconds:F1}s, yaw {yaw:F0}");
+            SelfStimPacket packet = new() { playerId = playerId, holdSeconds = holdSeconds, yaw = yaw };
+            SendPacket(ref packet);
+        }
+
+        public static void SendSelfStimCancelPacket(string playerId)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending self stim cancel packet for {playerId}");
+            SelfStimCancelPacket packet = new() { playerId = playerId };
+            SendPacket(ref packet);
+        }
+
         public static void SendSelfReviveStartPacket(string playerId)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending self revive start packet for {playerId}");
@@ -103,17 +117,17 @@ namespace KeepMeAlive.Networking.Fika
             SendPacket(ref packet);
         }
 
-        public static void SendTeamReviveStartPacket(string reviveeId, string reviverId)
+        public static void SendTeamReviveStartPacket(string reviveeId, string reviverId, ReviveSource source)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending team revive start packet: {reviverId} reviving {reviveeId}");
-            TeamReviveStartPacket packet = new() { reviveeId = reviveeId, reviverId = reviverId };
+            TeamReviveStartPacket packet = new() { reviveeId = reviveeId, reviverId = reviverId, source = (int)source };
             SendPacket(ref packet);
         }
 
-        public static void SendRevivedPacket(string playerId, string reviverId = "")
+        public static void SendRevivedPacket(string playerId, string reviverId, ReviveSource source)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending revived packet for {playerId}");
-            RevivedPacket packet = new() { playerId = playerId, reviverId = reviverId };
+            RevivedPacket packet = new() { playerId = playerId, reviverId = reviverId, source = (int)source };
             SendPacket(ref packet);
         }
 
@@ -192,9 +206,24 @@ namespace KeepMeAlive.Networking.Fika
             SendPacket(ref packet);
         }
 
-        public static void SendTeamHealResultPacket(string patientId, string healerId, string itemId, bool success, string reason)
+        public static void SendTeamHealResultPacket(string patientId, string healerId, string itemId, bool success, string reason, float useSeconds)
         {
-            TeamHealResultPacket packet = new() { patientId = patientId, healerId = healerId, itemId = itemId, success = success, reason = reason };
+            RevivalDebugLog.LogNetworkTrace($"Sending team heal result: {patientId} -> {healerId} item {itemId} success={success} use={useSeconds:F2}s");
+            TeamHealResultPacket packet = new() { patientId = patientId, healerId = healerId, itemId = itemId, success = success, reason = reason, useSeconds = useSeconds };
+            SendPacket(ref packet);
+        }
+
+        public static void SendDefibUsesPacket(string ownerId, string itemId, float usesLeft)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending defib uses: {ownerId} item {itemId} usesLeft={usesLeft:F0}");
+            DefibUsesPacket packet = new() { ownerId = ownerId, itemId = itemId, usesLeft = usesLeft };
+            SendPacket(ref packet);
+        }
+
+        public static void SendTeamHealUseEndedPacket(string patientId, string healerId, string itemId, bool completed)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending team heal use ended: {patientId} -> {healerId} item {itemId} completed={completed}");
+            TeamHealUseEndedPacket packet = new() { patientId = patientId, healerId = healerId, itemId = itemId, completed = completed };
             SendPacket(ref packet);
         }
     }

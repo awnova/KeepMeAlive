@@ -6,23 +6,22 @@ using Object = UnityEngine.Object;
 namespace KeepMeAlive.Animation.Hands
 {
     //====================[ StimPen ]====================
-    // The stim pen in the dragger's right hand (StimJabClip). The mesh (Tools/DragPose/bake_stim_jab.py) is in the hand's
+    // The stim pen in the dragger's right hand (StimJabClip). The mesh (Build/Tools/DragPose/bake_stim_jab.py) is in the hand's
     // frame (HandFrames.FromKnuckles), so it is placed on the palm in that frame: the grip of the Blender scene, on any
     // skeleton. Not parented to the bones: Follow places it in world space, so whatever scale the skeleton carries never
     // reaches the mesh, which is in metres.
     internal sealed class StimPen
     {
         private const string MeshResource = "KeepMeAlive.Resources.stim_pen.json";
-        private const string TextureResource = "KeepMeAlive.Resources.stim_pen_basecolor.png";
         private const string Schema = "keepmealive.stimpen.v1";
-        // The material bundle (Tools/PropBundles/build_prop_bundles.py): the game's item material lit as a stim's is.
+        // The material bundle (Build/Tools/PropBundles/build_prop_bundles.py): the game's item material lit as a stim's is.
         private const string BundleResource = "KeepMeAlive.Resources.stim_pen.bundle";
         private const string BundleMaterialPath = "assets/keepmealive/stimpen/keepmealive_stimpen.mat";
 
         //====================[ Shared Assets ]====================
         private static Mesh _mesh;
         private static readonly HandProps.SharedMaterial Shared =
-            new HandProps.SharedMaterial("StimPen", BundleResource, BundleMaterialPath, TextureResource, "StimPen");
+            new HandProps.SharedMaterial("StimPen", BundleResource, BundleMaterialPath);
         private static bool _loadFailed;
 
         private static bool LoadAssets()

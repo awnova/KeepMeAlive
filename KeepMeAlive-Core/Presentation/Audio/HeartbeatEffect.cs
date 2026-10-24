@@ -92,7 +92,7 @@ namespace KeepMeAlive.Presentation.Audio
         //====================[ Coroutine ]====================
         private static IEnumerator RunHeartbeat(RMPlayer st, AudioClip clip)
         {
-            float critical = SyncedServerConfigStore.Config.Gameplay.Revival.CriticalStateSeconds;
+            float critical = SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds;
             float phase1Duration = Mathf.Min(Phase1Duration, critical);
             float elapsed = 0f;
 

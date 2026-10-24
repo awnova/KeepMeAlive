@@ -20,14 +20,14 @@ namespace KeepMeAlive.Gameplay.Downed
         private const float LOG_THROTTLE_SECONDS = 5f;
 
         // A single lethal hit calls Kill() several times in the same frame (destroyed head,
-        // overdamage spill, total-health check). Cache the hardcore roll per player per frame
+        // overdamage spill, total-health check). Cache the headshot roll per player per frame
         // so one hit yields exactly one roll and one notification.
-        private static readonly Dictionary<string, (int frame, bool allowDeath)> HardcoreRollCache = new();
+        private static readonly Dictionary<string, (int frame, bool allowDeath)> HeadshotRollCache = new();
 
         public static void ClearCaches()
         {
             LastLogTime.Clear();
-            HardcoreRollCache.Clear();
+            HeadshotRollCache.Clear();
         }
 
         //====================[ Core Rules ]====================
@@ -79,12 +79,12 @@ namespace KeepMeAlive.Gameplay.Downed
             return true;
         }
 
-        // Hardcore headshot rule. Returns true to allow death immediately.
+        // Headshot death rule. Returns true to allow death immediately.
         // Only the hit that would first down the player rolls; once downed/invulnerable/on cooldown
         // the normal ShouldBlockDeath rules apply.
-        public static bool ShouldAllowDeathFromHardcoreHeadshot(Player player, ActiveHealthController healthController, EDamageType damageType)
+        public static bool ShouldAllowDeathFromHeadshot(Player player, ActiveHealthController healthController, EDamageType damageType)
         {
-            if (!Cfg.Protection.EnableHardcoreMode || !Cfg.Protection.HardcoreHeadshotsAreFatal)
+            if (Cfg.Protection.DeathFromHeadshotChance <= 0f)
             {
                 return false;
             }
@@ -104,26 +104,26 @@ namespace KeepMeAlive.Gameplay.Downed
             }
 
             int frame = Time.frameCount;
-            if (HardcoreRollCache.TryGetValue(playerId, out var cached) && cached.frame == frame)
+            if (HeadshotRollCache.TryGetValue(playerId, out var cached) && cached.frame == frame)
             {
                 return cached.allowDeath;
             }
 
-            // Config value is 0-1 (0.75 = 75% chance to survive into critical state).
+            // Config value is 0-1 (0.25 = 25% chance the headshot kills outright, otherwise the player is downed).
             float roll = UnityEngine.Random.Range(0f, 1f);
-            bool allowDeath = roll >= Cfg.Protection.HardcoreCriticalStateChance;
-            HardcoreRollCache[playerId] = (frame, allowDeath);
+            bool allowDeath = roll < Cfg.Protection.DeathFromHeadshotChance;
+            HeadshotRollCache[playerId] = (frame, allowDeath);
 
             if (!allowDeath)
             {
-                Plugin.LogSource.LogInfo($"[DeathMode] Hardcore headshot spared (roll {roll:F2}). Enter critical.");
+                Plugin.LogSource.LogInfo($"[DeathMode] Headshot death spared (roll {roll:F2}). Enter critical.");
                 NotificationManager.DisplayMessageNotification(
                     PlayerFacingMessages.Death.HeadshotCritical,
                     ENotificationDurationType.Default, ENotificationIconType.Alert, Color.green);
                 return false;
             }
 
-            Plugin.LogSource.LogInfo($"[DeathMode] Hardcore headshot: killed instantly (roll {roll:F2}).");
+            Plugin.LogSource.LogInfo($"[DeathMode] Headshot death: killed instantly (roll {roll:F2}).");
             NotificationManager.DisplayMessageNotification(
                 PlayerFacingMessages.Death.HeadshotKilled,
                 ENotificationDurationType.Default, ENotificationIconType.Alert, Color.red);
@@ -131,7 +131,7 @@ namespace KeepMeAlive.Gameplay.Downed
         }
 
         //====================[ Executions ]====================
-        // Called when a local death is allowed through without ForceBleedout (hardcore headshot,
+        // Called when a local death is allowed through without ForceBleedout (headshot death,
         // cooldown, kill override). Makes sure UI/locks/audio are torn down and every peer and
         // the server learn the player is dead, so observers don't keep them marked as downed.
         public static void OnLocalDeathAllowed(Player player, EDamageType damageType)

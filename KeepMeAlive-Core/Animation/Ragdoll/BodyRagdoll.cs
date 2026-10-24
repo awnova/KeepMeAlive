@@ -53,11 +53,10 @@ namespace KeepMeAlive.Animation.Ragdoll
         // inside the physics step (BodyRagdollMuscles), springs and never a servo, so gravity, the floor and the dragger's
         // hands still act on every part, and they are the same held or let go.
 
-        // After a drag the body stays physical until it has settled: every part slower than the settle
-        // threshold (SettleSpeed, m/s) and turning slower than SettleSpinPerSpeed times it (rad/s). It then plays the
-        // settle clip and goes on to the breathing loop (PhysicsToPose). A body still moving SettleTimeoutSeconds after it
-        // was let go counts as settled anyway; MinSettleSeconds gives a body let go in the air time to start falling
-        // before it is looked at.
+        // After a drag, keep the body physical until its parts move slower than SettleSpeed and its spin is below
+        // SettleSpinPerSpeed times that speed. Then play the settle clip and breathing loop (PhysicsToPose).
+        // SettleTimeoutSeconds forces settling if the body keeps moving; MinSettleSeconds lets a body dropped in the
+        // air start falling first.
         private const float SettleSpeed = 1f;
         private const float SettleSpinPerSpeed = 5f;
         private const float MinSettleSeconds = 0.3f;
@@ -114,7 +113,11 @@ namespace KeepMeAlive.Animation.Ragdoll
             // taken over (released in Exit).
             if (active && session.Player != null && session.Player.IsYourPlayer) FullScaleArms.Want(session.Player, session, !session.Prone);
 
-            if (!want) Failed.Remove(id);
+            if (!want)
+            {
+                Failed.Remove(id);
+                StimRequests.Remove(id);
+            }
 
             if (want && !active)
             {
@@ -127,6 +130,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 // EFT's prone body until a grab takes it back into the physics, or the one who let go of it says it lies
                 // on its back.
                 if (drag != null) ProneToPhysics(session);
+                else if (TryGetStim(player, out var stim)) ProneToSelfStim(session, stim);
                 else if (TryGetDropRest(player, out var st) && st.DropOnBack) ProneToPose(session, st);
             }
             else if (want && session.Phase != BodyPhase.Physics)
@@ -135,9 +139,10 @@ namespace KeepMeAlive.Animation.Ragdoll
                 // drops back to the ground through the physics too, and settles into the loop from there.
                 if (drag != null || session.Phase == BodyPhase.Roll) PoseToPhysics(session, drag != null);
                 // Lying on its back here, and the one who let go of it says it lies on its front.
-                else if (session.Phase == BodyPhase.Pose && !session.Pose.IsPlayingFall
+                else if (session.Phase == BodyPhase.Pose && !session.Pose.IsPlayingFall && !session.SelfStimmed
                          && TryGetDropRest(player, out var st) && !st.DropOnBack)
                     PoseToProne(session, st);
+                if (session.Phase == BodyPhase.Pose) StartSelfStimOnPose(session);
             }
             else if (want)
             {
@@ -210,6 +215,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             Active.Clear();
             Failed.Clear();
             FailedAt.Clear();
+            StimRequests.Clear();
             ClipRig.ClearReports();
             SkeletonBind.ClearKnown();
             CleanLocal.Clear();
@@ -335,7 +341,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             if (TryGetRest(player.ProfileId, out Vector3 restPelvis, out float restSpine))
                 DownedDragController.OnBodySettled(player.ProfileId, restPelvis, restSpine, settledOnBack);
 
-            // The way up the one who let go of it says it lies, when said (it may be this client); else as it settled here.
+            // Use the declared resting orientation when available; otherwise use the orientation this ragdoll settled into.
             bool declared = TryGetDropRest(player, out var st);
             if (!(declared ? st.DropOnBack : settledOnBack))
             {
@@ -395,7 +401,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             }
         }
 
-        // The place the one who let go of the body said it came to rest (DropRestPacket), when it has said.
+        // The resting position reported by the peer that released the body (DropRestPacket), once received.
         private static bool TryGetDropRest(Player player, out RMPlayer st) =>
             RMSession.TryGetPlayerState(player.ProfileId, out st) && st.HasDropRest;
 

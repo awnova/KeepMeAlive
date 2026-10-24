@@ -5,7 +5,7 @@ using UnityEngine;
 namespace KeepMeAlive.Runtime.State
 {
     //====================[ Enums ]====================
-    public enum ReviveSource { Self = 0, Team = 1 }
+    public enum ReviveSource { Self = 0, Team = 1, Defib = 2 }
 
     public enum RMState
     {

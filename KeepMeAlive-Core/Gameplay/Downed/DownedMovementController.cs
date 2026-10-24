@@ -444,7 +444,7 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 case RMState.BleedingOut:
                     bool frozen = st.IsLimp || st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth;
-                    return frozen ? 0f : Mathf.Clamp01(SyncedServerConfigStore.Config.Gameplay.Revival.DownedMovementSpeedPercent / 100f);
+                    return frozen ? 0f : Mathf.Clamp01(SyncedServerConfigStore.Config.Gameplay.Downed.DownedMovementSpeedPercent / 100f);
                 case RMState.Reviving:
                     return 0f;
                 case RMState.Revived:

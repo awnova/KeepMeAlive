@@ -12,7 +12,7 @@ namespace KeepMeAlive.Gameplay.Downed
         //====================[ Per-Frame Tick ]====================
         public static void Tick(Player player, RMPlayer st)
         {
-            if (!RevivePolicy.IsEnabled(ReviveSource.Self)) return;
+            if (!RevivePolicy.IsSelfReviveEnabled) return;
             if (st.State != RMState.BleedingOut) return;
             // Self-revive is off while spectating; the player returns to their body first.
             if (DownedSpectate.IsActive) return;
@@ -56,14 +56,14 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             RevivalController.Trace("SelfHold_KeyDown", player, st, $"| key={key}");
 
-            if (RevivePolicy.RequiresItem && !ModUtils.HasReviveItem(player))
+            if (!RevivePolicy.HasRequiredItem(ReviveSource.Self, player))
             {
-                RevivalController.Trace("SelfHold_BlockedNoReviveItem", player, st);
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NoReviveItemFound);
+                RevivalController.Trace("SelfHold_BlockedNoStim", player, st);
+                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NoStimFound);
                 return;
             }
 
-            int selfReviveCost = SyncedServerConfigStore.Config.Gameplay.Revival.SelfReviveLivesCost;
+            int selfReviveCost = RevivePolicy.LivesCost(ReviveSource.Self);
             if (st.LivesRemaining < selfReviveCost)
             {
                 RevivalController.Trace("SelfHold_BlockedOutOfLives", player, st, $"| livesRemaining={st.LivesRemaining} cost={selfReviveCost}");
@@ -78,6 +78,9 @@ namespace KeepMeAlive.Gameplay.Downed
 
             Hud.HideHold();
             st.RevivePromptTimer = Hud.ShowHold(Hud.HoldKind.SelfRevive, holdDuration);
+
+            // The body stabs itself with a stim pen for as long as the key is held (SelfStimSequence), on every peer.
+            SelfStimFlow.Begin(player, holdDuration);
         }
     }
 }

@@ -51,13 +51,9 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             var entry = GetOrCreateLocked(playerId);
             var now = Now();
             var sourceKind = ResolveSource(playerId, reviverId, source);
-            var mechanics = configService.Config.Gameplay.Revival;
 
-            if (sourceKind == RevivalSourceKind.Self && !mechanics.EnableSelfRevive)
-                return Denied(RevivalDeniedCode.FeatureDisabled, "Self revive is disabled by server config", entry);
-
-            if (sourceKind == RevivalSourceKind.Team && !mechanics.EnableTeamRevive)
-                return Denied(RevivalDeniedCode.FeatureDisabled, "Team revive is disabled by server config", entry);
+            if (!GetTypeConfig(sourceKind).Enabled)
+                return Denied(RevivalDeniedCode.FeatureDisabled, $"{sourceKind} revive is disabled by server config", entry);
 
             if (entry.CooldownUntilUnixSeconds - CooldownGraceSeconds > now)
                 return Denied(RevivalDeniedCode.Cooldown, "Player on cooldown", entry);
@@ -67,7 +63,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
 
             if (entry.State == RevivalState.Reviving)
             {
-                bool stale = now - entry.LastUpdatedUnixSeconds > (long)GetProgressSeconds(entry.Source) + StaleRevivingGraceSeconds;
+                bool stale = now - entry.LastUpdatedUnixSeconds > (long)ProgressSeconds + StaleRevivingGraceSeconds;
                 // A self-revive may restart its own stuck attempt; nobody may take over a live team revive.
                 bool selfRetry = sourceKind == RevivalSourceKind.Self && entry.Source == RevivalSourceKind.Self;
                 if (!stale && !selfRetry)
@@ -155,7 +151,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
     {
         lock (_sync)
         {
-            int maxLives = configService.Config.Gameplay.Revival.MaxLivesPerRaid;
+            int maxLives = configService.Config.Gameplay.Downed.MaxLivesPerRaid;
             foreach (var id in playerIds)
             {
                 var entry = GetOrCreateLocked(id);
@@ -174,7 +170,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             {
                 PlayerId = playerId,
                 LastUpdatedUnixSeconds = Now(),
-                LivesRemaining = configService.Config.Gameplay.Revival.MaxLivesPerRaid
+                LivesRemaining = configService.Config.Gameplay.Downed.MaxLivesPerRaid
             };
             _entries[playerId] = entry;
         }
@@ -193,8 +189,11 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
 
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+    // The client names the type; a missing name falls back to Self when the player revives themself, else Team.
     private static RevivalSourceKind ResolveSource(string playerId, string reviverId, string source)
     {
+        if (string.Equals(source, "defib", StringComparison.OrdinalIgnoreCase)) return RevivalSourceKind.Defib;
+        if (string.Equals(source, "team", StringComparison.OrdinalIgnoreCase)) return RevivalSourceKind.Team;
         if (string.Equals(source, "self", StringComparison.OrdinalIgnoreCase)
             || string.Equals(playerId, reviverId, StringComparison.Ordinal))
         {
@@ -204,22 +203,23 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
         return RevivalSourceKind.Team;
     }
 
-    private float GetCooldownSeconds(RevivalSourceKind source)
+    private ReviveTypeConfig GetTypeConfig(RevivalSourceKind source)
     {
-        var postRevive = configService.Config.Gameplay.PostRevive;
-        return source == RevivalSourceKind.Self ? postRevive.Self.CooldownSeconds : postRevive.Team.CooldownSeconds;
+        var gameplay = configService.Config.Gameplay;
+        return source switch
+        {
+            RevivalSourceKind.Self => gameplay.Self,
+            RevivalSourceKind.Defib => gameplay.Defib,
+            _ => gameplay.Team
+        };
     }
+
+    private float GetCooldownSeconds(RevivalSourceKind source) => GetTypeConfig(source).CooldownSeconds;
 
     // Length of the revive progress phase after the hold, the same for every source (matches the client).
     private const float ProgressSeconds = 5f;
 
-    private static float GetProgressSeconds(RevivalSourceKind source) => ProgressSeconds;
-
-    private int GetLivesCost(RevivalSourceKind source)
-    {
-        var mechanics = configService.Config.Gameplay.Revival;
-        return source == RevivalSourceKind.Self ? mechanics.SelfReviveLivesCost : mechanics.TeamReviveLivesCost;
-    }
+    private int GetLivesCost(RevivalSourceKind source) => GetTypeConfig(source).LivesCost;
 
     private static RevivalAuthorityResponse Allowed(RevivalStateEntry state) =>
         new() { Success = true, State = state with { } };

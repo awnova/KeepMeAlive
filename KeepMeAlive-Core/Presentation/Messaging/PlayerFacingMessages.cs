@@ -27,7 +27,7 @@ namespace KeepMeAlive.Presentation.Messaging
             public const string GiveUp = "Give up";
             public const string Hold = "Hold";
             public const string WaitForTeammate = "Wait for teammate";
-            public const string NeedsDefibrillator = "Needs defibrillator";
+            public const string NeedsStim = "Needs stim";
 
             public const string Spectate = "Spectate";
             public const string Spectating = "Spectating";
@@ -49,22 +49,15 @@ namespace KeepMeAlive.Presentation.Messaging
         //====================[ Interactions ]====================
         internal static class Interaction
         {
-            public const string TeamReviveDisabled = "Team revive is disabled";
             public const string CannotReviveWhileMoving = "You can't revive a player while moving";
             // The one menu entry for a downed teammate: tap drags (or lets go), hold revives.
             public const string SupportAction = "Support";
             public const string LootAction = "Loot";
             public const string ReviveNoLongerPossible = "Revive no longer possible";
             public const string ReviveCancelled = "Revive cancelled!";
+            // The one menu entry for a standing, hurt teammate: opens the team-heal wheel.
+            public const string InteractAction = "Interact";
 
-            public const string MedicBleeds = "Medic Bleeds";
-            public const string MedicBreaks = "Medic Breaks";
-            public const string MedicHealth = "Medic Health";
-            public const string MedicComfort = "Medic Comfort";
-            public const string MedicNutrition = "Medic Nutrition";
-
-            public const string MedPickerName = "Med Picker";
-            public const string CancelAction = "Cancel";
             public const string DragHint = "Dragging teammate - stand up, draw a weapon or turn away to let go";
             public const string DragReleased = "Released teammate";
             public const string LootProtectedItem = "Equipped gear can't be taken from a downed teammate";
@@ -73,8 +66,6 @@ namespace KeepMeAlive.Presentation.Messaging
         //====================[ Team Heal ]====================
         internal static class TeamHeal
         {
-            public const string CannotHealWhileMoving = "You can't heal while moving";
-            public const string HealingCancelled = "Healing cancelled!";
             public const string PatientUnavailable = "Patient is no longer available";
             public const string HealingTeammate = "Healing teammate...";
             public const string YouWereHealed = "You were healed!";
@@ -82,17 +73,46 @@ namespace KeepMeAlive.Presentation.Messaging
             public const string HealNoResponse = "Heal not confirmed by teammate";
             public const string ItemUnavailable = "Med item no longer available";
             public const string PatientBusy = "Teammate could not use the item";
+            public const string HealInterrupted = "Teammate stopped using the item";
 
             public static string StartedBy(string healerDisplay, string patientDisplay) =>
                 $"{healerDisplay} is healing {patientDisplay}";
         }
 
+        //====================[ Team-Heal Wheel ]====================
+        // Labels drawn by TeamHealWheelView and its strip. Shown upper-case by the font style.
+        internal static class HealWheel
+        {
+            public const string Bleeds = "Bleeds";
+            public const string Breaks = "Breaks";
+            public const string Health = "Health";
+            public const string Comfort = "Comfort";
+            public const string Nutrition = "Nutrition";
+
+            public const string NotNeeded = "Not needed";
+            public const string NoMeds = "No meds";
+
+            public const string Open = "Open";
+            public const string Close = "Close";
+            public const string Use = "Use";
+            public const string Back = "Back";
+
+            public const string Hp = "HP";
+            public const string Uses = "uses";
+            public const string OneUse = "1 use";
+
+            public static string Items(int count) => count == 1 ? "1 item" : $"{count} items";
+        }
+
         //====================[ Revive Flow ]====================
         internal static class Revive
         {
-            public const string NoReviveItemFound = "No revive item found! Unable to revive!";
+            public const string NoDefibFound = "No defib found! Unable to revive!";
+            public const string NoStimFound = "No stim found! Unable to revive!";
+            public const string MissingStimCanceled = "Stim missing. Revive canceled.";
+            public const string Disabled = "This kind of revive is disabled";
             public const string SelfReviveCanceled = "Self-revive canceled";
-            public const string MissingItemCanceled = "Revive Item missing. Self-revive canceled.";
+            public const string MissingDefibCanceled = "Defib missing. Revive canceled.";
             public static string NotEnoughLives(int cost) =>
                 $"Not enough lives to self-revive (Costs {cost})";
         }
@@ -100,7 +120,7 @@ namespace KeepMeAlive.Presentation.Messaging
         //====================[ Revive Complete ]====================
         internal static class ReviveComplete
         {
-            public const string LocalSelf = "Revive Item used successfully! You are temporarily invulnerable.";
+            public const string LocalSelf = "Stim used successfully! You are temporarily invulnerable.";
             public const string LocalTeam = "Revived by teammate! You are temporarily invulnerable.";
 
             public static string ObserverBySource(string playerDisplay, ReviveSource source)
@@ -168,13 +188,6 @@ namespace KeepMeAlive.Presentation.Messaging
         internal static class Spectate
         {
             public const string NoTeammates = "No teammates left to spectate";
-        }
-
-        //====================[ Ghost Mode ]====================
-        internal static class GhostMode
-        {
-            public static string State(bool entered) =>
-                $"GhostMode: {(entered ? "Entered (F7)" : "Exited (F8)")}";
         }
     }
 }

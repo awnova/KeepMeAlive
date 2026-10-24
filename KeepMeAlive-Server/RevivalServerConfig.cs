@@ -4,10 +4,10 @@ namespace KeepMeAlive.Server;
 public sealed class RevivalServerConfig
 {
     // Must match KeepMeAlive-Core SyncedServerConfigStore.SupportedSchemaVersion.
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 1;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
-    public RevivalItemConfig RevivalItem { get; set; } = new();
+    public DefibConfig Defib { get; set; } = new();
     public RevivalGameplayConfig Gameplay { get; set; } = new();
 
     //====================[ Normalize ]====================
@@ -15,28 +15,26 @@ public sealed class RevivalServerConfig
     {
         SchemaVersion = CurrentSchemaVersion;
 
-        RevivalItem ??= new RevivalItemConfig();
+        Defib ??= new DefibConfig();
         Gameplay ??= new RevivalGameplayConfig();
 
-        RevivalItem.Normalize();
+        Defib.Normalize();
         Gameplay.Normalize();
     }
 }
 
-//====================[ RevivalItemConfig ]====================
-public sealed class RevivalItemConfig
+//====================[ DefibConfig ]====================
+public sealed class DefibConfig
 {
-    public string TemplateId { get; set; } = TraderConstants.RevivalItemTemplateId;
     // On by default. Existing items retain their saved footprint until they are moved.
     public bool ResizeTo2x1 { get; set; } = true;
+    // How many revives one defibrillator provides; shown as the item's "uses" counter. Spent by the Defib revive with ConsumeDefib on.
+    public int Uses { get; set; } = 5;
     public TradingConfig Trading { get; set; } = new();
 
     public void Normalize()
     {
-        TemplateId = string.IsNullOrWhiteSpace(TemplateId)
-            ? TraderConstants.RevivalItemTemplateId
-            : TemplateId.Trim();
-
+        Uses = Math.Clamp(Uses, 1, 999);
         Trading ??= new TradingConfig();
         Trading.Normalize();
     }
@@ -45,14 +43,11 @@ public sealed class RevivalItemConfig
 //====================[ TradingConfig ]====================
 public sealed class TradingConfig
 {
-    // Trader name (e.g. "Therapist") or trader id.
-    public string Trader { get; set; } = "Therapist";
     public int AmountRoubles { get; set; } = 200000;
     public int LoyaltyLevel { get; set; } = 2;
 
     public void Normalize()
     {
-        Trader = string.IsNullOrWhiteSpace(Trader) ? "Therapist" : Trader.Trim();
         AmountRoubles = Math.Max(1, AmountRoubles);
         LoyaltyLevel = Math.Clamp(LoyaltyLevel, 1, 4);
     }
@@ -61,82 +56,79 @@ public sealed class TradingConfig
 //====================[ RevivalGameplayConfig ]====================
 public sealed class RevivalGameplayConfig
 {
-    public RevivalMechanicsConfig Revival { get; set; } = new();
-    public PostReviveConfig PostRevive { get; set; } = new();
+    // Settings shared by every revive type: the downed state itself and the lives pool.
+    public DownedConfig Downed { get; set; } = new();
+    // One section per revive type: Self (own stim), Team (a teammate dragging the body, stim jab),
+    // Defib (a teammate not dragging the body, defibrillator animation).
+    public ReviveTypeConfig Self { get; set; } = ReviveTypeConfig.CreateSelfDefaults();
+    public ReviveTypeConfig Team { get; set; } = ReviveTypeConfig.CreateTeamDefaults();
+    public ReviveTypeConfig Defib { get; set; } = ReviveTypeConfig.CreateDefibDefaults();
+    // Template id of the stim that Self and Team revives use up when their RequireStim is on. Empty uses the game's
+    // Adrenaline stim, which the client knows by default.
+    public string StimItemId { get; set; } = "";
     public ProtectionConfig Protection { get; set; } = new();
     public TeamHealingConfig TeamHealing { get; set; } = new();
     public DevelopmentGameplayConfig Development { get; set; } = new();
 
     public void Normalize()
     {
-        Revival ??= new RevivalMechanicsConfig();
-        PostRevive ??= new PostReviveConfig();
+        StimItemId = (StimItemId ?? "").Trim();
+
+        Downed ??= new DownedConfig();
+        Self ??= ReviveTypeConfig.CreateSelfDefaults();
+        Team ??= ReviveTypeConfig.CreateTeamDefaults();
+        Defib ??= ReviveTypeConfig.CreateDefibDefaults();
         Protection ??= new ProtectionConfig();
         TeamHealing ??= new TeamHealingConfig();
         Development ??= new DevelopmentGameplayConfig();
 
-        Revival.Normalize();
-        PostRevive.Normalize();
+        Downed.Normalize();
+        Self.Normalize();
+        Team.Normalize();
+        Defib.Normalize();
         Protection.Normalize();
         TeamHealing.Normalize();
     }
 }
 
-//====================[ RevivalMechanicsConfig ]====================
-public sealed class RevivalMechanicsConfig
+//====================[ DownedConfig ]====================
+public sealed class DownedConfig
 {
-    public bool EnableSelfRevive { get; set; } = true;
-    public bool EnableTeamRevive { get; set; } = true;
-    public float SelfReviveHoldSeconds { get; set; } = 10f;
-    public float TeamReviveHoldSeconds { get; set; } = 5f;
-    public bool ConsumeReviveItemOnSelfRevive { get; set; } = true;
-    public bool ConsumeReviveItemOnTeamRevive { get; set; } = false;
     public float CriticalStateSeconds { get; set; } = 180f;
-    public bool RestoreVitalsOnDowned { get; set; } = true;
     public bool ApplyContusionOnDowned { get; set; } = true;
     public bool ApplyStunOnDowned { get; set; } = true;
     public float DownedMovementSpeedPercent { get; set; } = 50f;
     public bool BlockUiWhenDowned { get; set; } = true;
     public bool UnconsciousOnDowned { get; set; } = false;
     public int MaxLivesPerRaid { get; set; } = 5;
-    public int SelfReviveLivesCost { get; set; } = 3;
-    public int TeamReviveLivesCost { get; set; } = 1;
 
     public void Normalize()
     {
-        SelfReviveHoldSeconds = Math.Max(0.1f, SelfReviveHoldSeconds);
-        TeamReviveHoldSeconds = Math.Max(0.1f, TeamReviveHoldSeconds);
         CriticalStateSeconds = Math.Max(1f, CriticalStateSeconds);
         DownedMovementSpeedPercent = Math.Clamp(DownedMovementSpeedPercent, 0f, 100f);
         MaxLivesPerRaid = Math.Max(1, MaxLivesPerRaid);
-        SelfReviveLivesCost = Math.Max(0, SelfReviveLivesCost);
-        TeamReviveLivesCost = Math.Max(0, TeamReviveLivesCost);
     }
 }
 
-//====================[ PostReviveConfig ]====================
-public sealed class PostReviveConfig
+//====================[ ReviveTypeConfig ]====================
+// Everything one revive type owns: whether it is on, how long it takes, what it costs, the defibrillator rules, and what
+// the revived player gets (restore, invulnerability, cooldown, effects).
+public sealed class ReviveTypeConfig
 {
-    public PostReviveSourceConfig Self { get; set; } = PostReviveSourceConfig.CreateSelfDefaults();
-    public PostReviveSourceConfig Team { get; set; } = PostReviveSourceConfig.CreateTeamDefaults();
-
-    public void Normalize()
-    {
-        Self ??= PostReviveSourceConfig.CreateSelfDefaults();
-        Team ??= PostReviveSourceConfig.CreateTeamDefaults();
-
-        Self.Normalize();
-        Team.Normalize();
-    }
-}
-
-//====================[ PostReviveSourceConfig ]====================
-public sealed class PostReviveSourceConfig
-{
+    public bool Enabled { get; set; } = true;
+    public float HoldSeconds { get; set; } = 5f;
+    public int LivesCost { get; set; } = 1;
+    // Defib only: the reviver must carry a defib, and ConsumeDefib spends one of its uses. Self and Team ignore both.
+    public bool RequireDefib { get; set; } = true;
+    public bool ConsumeDefib { get; set; }
+    // Self and Team only: the reviver must carry a stim, which is single-use and deleted when the revive starts.
+    public bool RequireStim { get; set; }
     public bool RestoreBodyParts { get; set; } = true;
     public BodyRestorePercentConfig RestorePercent { get; set; } = BodyRestorePercentConfig.CreateNeutralDefaults();
-    public bool RemoveBleeds { get; set; }
-    public bool RemoveFractures { get; set; }
+    public bool RemoveLightBleeds { get; set; }
+    public bool RemoveHeavyBleeds { get; set; }
+    public bool RemoveLegFractures { get; set; }
+    public bool RemoveArmFractures { get; set; }
     public float InvulnerabilityDurationSeconds { get; set; } = 5f;
     public float InvulnerabilitySpeedPercent { get; set; } = 100f;
     public float CooldownSeconds { get; set; }
@@ -145,14 +137,20 @@ public sealed class PostReviveSourceConfig
     public bool ApplyPainOnRevive { get; set; }
     public float PainDurationSeconds { get; set; } = 30f;
 
-    public static PostReviveSourceConfig CreateSelfDefaults() => new()
+    public static ReviveTypeConfig CreateSelfDefaults() => new()
     {
+        Enabled = true,
+        HoldSeconds = 8f,
+        LivesCost = 3,
+        RequireStim = false,
         RestoreBodyParts = true,
         RestorePercent = BodyRestorePercentConfig.CreateNeutralDefaults(),
-        RemoveBleeds = false,
-        RemoveFractures = false,
-        InvulnerabilityDurationSeconds = 5f,
-        InvulnerabilitySpeedPercent = 100f,
+        RemoveLightBleeds = false,
+        RemoveHeavyBleeds = true,
+        RemoveLegFractures = false,
+        RemoveArmFractures = false,
+        InvulnerabilityDurationSeconds = 10f,
+        InvulnerabilitySpeedPercent = 60f,
         CooldownSeconds = 240f,
         ApplyContusionOnRevive = true,
         ContusionDurationSeconds = 10f,
@@ -160,23 +158,55 @@ public sealed class PostReviveSourceConfig
         PainDurationSeconds = 30f
     };
 
-    public static PostReviveSourceConfig CreateTeamDefaults() => new()
+    public static ReviveTypeConfig CreateTeamDefaults() => new()
     {
+        Enabled = true,
+        HoldSeconds = 6f,
+        LivesCost = 2,
+        RequireStim = false,
         RestoreBodyParts = true,
         RestorePercent = BodyRestorePercentConfig.CreateTeamDefaults(),
-        RemoveBleeds = true,
-        RemoveFractures = true,
-        InvulnerabilityDurationSeconds = 5f,
-        InvulnerabilitySpeedPercent = 100f,
+        RemoveLightBleeds = true,
+        RemoveHeavyBleeds = true,
+        RemoveLegFractures = false,
+        RemoveArmFractures = false,
+        InvulnerabilityDurationSeconds = 7f,
+        InvulnerabilitySpeedPercent = 80f,
         CooldownSeconds = 180f,
         ApplyContusionOnRevive = true,
-        ContusionDurationSeconds = 5f,
-        ApplyPainOnRevive = false,
-        PainDurationSeconds = 30f
+        ContusionDurationSeconds = 6f,
+        ApplyPainOnRevive = true,
+        PainDurationSeconds = 20f
+    };
+
+    // The premium revive: needs a brought-in defibrillator (kept after use), so it is the fastest and cleanest.
+    public static ReviveTypeConfig CreateDefibDefaults() => new()
+    {
+        Enabled = true,
+        HoldSeconds = 4f,
+        LivesCost = 1,
+        RequireDefib = true,
+        ConsumeDefib = false,
+        RestoreBodyParts = true,
+        RestorePercent = BodyRestorePercentConfig.CreateDefibDefaults(),
+        RemoveLightBleeds = true,
+        RemoveHeavyBleeds = true,
+        RemoveLegFractures = true,
+        RemoveArmFractures = true,
+        InvulnerabilityDurationSeconds = 5f,
+        InvulnerabilitySpeedPercent = 100f,
+        CooldownSeconds = 90f,
+        ApplyContusionOnRevive = true,
+        ContusionDurationSeconds = 3f,
+        ApplyPainOnRevive = true,
+        PainDurationSeconds = 10f
     };
 
     public void Normalize()
     {
+        HoldSeconds = Math.Max(0.1f, HoldSeconds);
+        LivesCost = Math.Max(0, LivesCost);
+
         RestorePercent ??= BodyRestorePercentConfig.CreateNeutralDefaults();
         RestorePercent.Normalize();
 
@@ -202,7 +232,7 @@ public sealed class BodyRestorePercentConfig
 
     public static BodyRestorePercentConfig CreateNeutralDefaults() => new()
     {
-        Head = 0f,
+        Head = 20f,
         Chest = 35f,
         Stomach = 35f,
         Arms = 35f,
@@ -211,11 +241,20 @@ public sealed class BodyRestorePercentConfig
 
     public static BodyRestorePercentConfig CreateTeamDefaults() => new()
     {
-        Head = 50f,
-        Chest = 50f,
-        Stomach = 50f,
-        Arms = 50f,
-        Legs = 50f
+        Head = 30f,
+        Chest = 45f,
+        Stomach = 45f,
+        Arms = 45f,
+        Legs = 45f
+    };
+
+    public static BodyRestorePercentConfig CreateDefibDefaults() => new()
+    {
+        Head = 60f,
+        Chest = 75f,
+        Stomach = 75f,
+        Arms = 75f,
+        Legs = 75f
     };
 
     public void Normalize()
@@ -232,15 +271,14 @@ public sealed class BodyRestorePercentConfig
 public sealed class ProtectionConfig
 {
     public bool BlockDeathInCritical { get; set; } = true;
-    public bool EnableGodMode { get; set; }
+    public bool EnableGodMode { get; set; } = true;
     public bool EnableGhostMode { get; set; } = true;
-    public bool EnableHardcoreMode { get; set; }
-    public bool HardcoreHeadshotsAreFatal { get; set; }
-    public float HardcoreCriticalStateChance { get; set; } = 0.75f;
+    // Chance (0-1) that a headshot which would down a player kills them outright instead; 0 turns it off.
+    public float DeathFromHeadshotChance { get; set; }
 
     public void Normalize()
     {
-        HardcoreCriticalStateChance = Math.Clamp(HardcoreCriticalStateChance, 0f, 1f);
+        DeathFromHeadshotChance = Math.Clamp(DeathFromHeadshotChance, 0f, 1f);
     }
 }
 
@@ -248,7 +286,6 @@ public sealed class ProtectionConfig
 public sealed class TeamHealingConfig
 {
     public bool Enabled { get; set; } = true;
-    public float HoldSeconds { get; set; } = 1f;
     public float UseTimeMultiplier { get; set; } = 1f;
     public float MinHpResourceToDisplay { get; set; } = 50f;
     public float NutritionMinDeficitToDisplay { get; set; } = 0.5f;
@@ -256,7 +293,6 @@ public sealed class TeamHealingConfig
 
     public void Normalize()
     {
-        HoldSeconds = Math.Max(0.1f, HoldSeconds);
         UseTimeMultiplier = Math.Max(0.01f, UseTimeMultiplier);
         MinHpResourceToDisplay = Math.Max(0f, MinHpResourceToDisplay);
         NutritionMinDeficitToDisplay = Math.Max(0f, NutritionMinDeficitToDisplay);
@@ -266,5 +302,6 @@ public sealed class TeamHealingConfig
 //====================[ DevelopmentGameplayConfig ]====================
 public sealed class DevelopmentGameplayConfig
 {
-    public bool NoReviveItemRequired { get; set; }
+    // Turns on the clients' debug logging and the revive, network and self-revive traces.
+    public bool DebugMode { get; set; }
 }

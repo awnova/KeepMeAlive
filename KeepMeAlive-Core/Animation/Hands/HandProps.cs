@@ -10,8 +10,8 @@ namespace KeepMeAlive.Animation.Hands
 {
     //====================[ HandProps ]====================
     // What the props the mod puts in a player's hands (the defibrillator paddles, the stim pen) are made of, in one place: a
-    // mesh from baked JSON (Tools/DefibHands/bake_defib_hands.py, Tools/DragPose/bake_stim_jab.py), a texture from an embedded
-    // PNG, a material from an embedded bundle (Tools/PropBundles/build_prop_bundles.py) and a renderer set up the way the game
+    // mesh from baked JSON (Build/Tools/DefibHands/bake_defib_hands.py, Build/Tools/DragPose/bake_stim_jab.py), a texture from an embedded
+    // PNG, a material from an embedded bundle (Build/Tools/PropBundles/build_prop_bundles.py) and a renderer set up the way the game
     // sets up its own items.
     internal static class HandProps
     {
@@ -45,17 +45,6 @@ namespace KeepMeAlive.Animation.Hands
             mesh.RecalculateTangents();
             mesh.UploadMeshData(true);
             return mesh;
-        }
-
-        //====================[ Texture ]====================
-        public static Texture2D LoadTexture(string resource, string name)
-        {
-            using var stream = EmbeddedData.Open(resource);
-            using var memory = new MemoryStream();
-            stream.CopyTo(memory);
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, true) { name = "KeepMeAlive_" + name };
-            if (!texture.LoadImage(memory.ToArray(), true)) throw new InvalidDataException("texture decode");
-            return texture;
         }
 
         //====================[ Material ]====================
@@ -104,28 +93,25 @@ namespace KeepMeAlive.Animation.Hands
             }
         }
 
-        // A prop's shared material: the bundle's, else a plain one, built on first use and dropped at the raid's end.
+        // A prop's shared material: the bundle's, loaded on first use and dropped at the raid's end.
         public sealed class SharedMaterial
         {
-            private readonly string _tag, _bundleResource, _bundlePath, _textureResource, _textureName;
+            private readonly string _tag, _bundleResource, _bundlePath;
             private Material _material;
             private AssetBundle _bundle;
 
-            public SharedMaterial(string tag, string bundleResource, string bundlePath, string textureResource, string textureName)
+            public SharedMaterial(string tag, string bundleResource, string bundlePath)
             {
                 _tag = tag;
                 _bundleResource = bundleResource;
                 _bundlePath = bundlePath;
-                _textureResource = textureResource;
-                _textureName = textureName;
             }
 
-            // The bundle's material, else a plain one so the prop still shows. Null only without any shader.
+            // The bundle's material; null, logged, when the bundle cannot be used (the prop is then not shown).
             public Material Get()
             {
                 if (_material != null) return _material;
-                _material = LoadBundledMaterial(_tag, _bundleResource, _bundlePath, out _bundle)
-                    ?? PlainMaterial(_tag, LoadTexture(_textureResource, _textureName));
+                _material = LoadBundledMaterial(_tag, _bundleResource, _bundlePath, out _bundle);
                 return _material;
             }
 
@@ -133,8 +119,7 @@ namespace KeepMeAlive.Animation.Hands
             public void Clear()
             {
                 // The bundle's own material goes with the bundle.
-                if (_bundle != null) Unload(ref _bundle);
-                else if (_material != null) Object.Destroy(_material);
+                Unload(ref _bundle);
                 _material = null;
             }
         }
@@ -143,20 +128,6 @@ namespace KeepMeAlive.Animation.Hands
         {
             if (bundle != null) bundle.Unload(true);
             bundle = null;
-        }
-
-        // A plain lit material with the prop's colour, for when there is no bundled one, so the prop still shows. Null when the
-        // build has none of the shaders it tries.
-        public static Material PlainMaterial(string tag, Texture2D colour)
-        {
-            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse") ?? Shader.Find("Unlit/Texture");
-            if (shader == null)
-            {
-                Plugin.LogSource.LogWarning($"[{tag}] No material and no built-in shader; not shown.");
-                return null;
-            }
-            Plugin.LogSource.LogWarning($"[{tag}] Using shader '{shader.name}' instead of the game's item material.");
-            return new Material(shader) { name = "KeepMeAlive_" + tag, mainTexture = colour };
         }
 
         //====================[ Renderer ]====================

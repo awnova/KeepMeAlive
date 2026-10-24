@@ -7,15 +7,14 @@ using Object = UnityEngine.Object;
 namespace KeepMeAlive.Animation.Hands.DefibHands
 {
     //====================[ DefibPaddles ]====================
-    // The two paddles in a reviver's hands. The meshes (Tools/DefibHands/bake_defib_hands.py) are in their hand's
+    // The two paddles in a reviver's hands. The meshes (Build/Tools/DefibHands/bake_defib_hands.py) are in their hand's
     // frame (HandFrames.FromKnuckles), so each is placed on its palm in that frame: the grip of the Blender scene,
     // on any skeleton.
     internal sealed class DefibPaddles
     {
         private const string MeshResource = "KeepMeAlive.Resources.defib_paddles.json";
-        private const string TextureResource = "KeepMeAlive.Resources.defib_paddle_basecolor.png";
         private const string Schema = "keepmealive.defibpaddles.v1";
-        // The material bundle (Tools/PropBundles/build_prop_bundles.py): the game's item material with the paddles' textures.
+        // The material bundle (Build/Tools/PropBundles/build_prop_bundles.py): the game's item material with the paddles' textures.
         private const string BundleResource = "KeepMeAlive.Resources.defib_paddles.bundle";
         private const string BundleMaterialPath = "assets/keepmealive/defibpaddles/keepmealive_defibpaddles.mat";
 
@@ -23,7 +22,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         // Left and right paddle meshes, and the material.
         private static Mesh[] _meshes;
         private static readonly HandProps.SharedMaterial Shared =
-            new HandProps.SharedMaterial("DefibPaddles", BundleResource, BundleMaterialPath, TextureResource, "DefibPaddle");
+            new HandProps.SharedMaterial("DefibPaddles", BundleResource, BundleMaterialPath);
         private static bool _loadFailed;
 
         // Builds the meshes once (at raid load, so the first revive does not hitch).

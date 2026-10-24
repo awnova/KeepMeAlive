@@ -222,6 +222,8 @@ namespace KeepMeAlive.Gameplay.Downed
         public static bool DeliberateMove(Player player, RMPlayer st)
         {
             if (st.IsLimp && Time.time - st.LimpStartTime < MinLimpSeconds) return false;
+            // Holding the self-revive key: the body lies and stabs itself, whatever keys are pressed meanwhile.
+            if (st.IsSelfReviving || st.SelfReviveAwaitingAuth) return false;
             // Unconscious: the player is out and cannot pick themselves up.
             if (st.IsSilentInventoryAnimActive) return false;
             if (player.InputDirection.sqrMagnitude < MoveInputThreshold * MoveInputThreshold) return false;

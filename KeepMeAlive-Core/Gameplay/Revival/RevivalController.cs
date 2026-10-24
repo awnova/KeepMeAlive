@@ -27,7 +27,7 @@ namespace KeepMeAlive.Gameplay.Revival
             Action onStart,
             Action<string, Color> onDenied)
         {
-            string sourceName = source == ReviveSource.Self ? "self" : "team";
+            string sourceName = source switch { ReviveSource.Self => "self", ReviveSource.Defib => "defib", _ => "team" };
             ReviveDebug.Log("Auth_Start", targetId, false, $"reviver={reviverId} source={sourceName}");
 
             var task = RevivalAuthority.AuthorizeReviveStartAsync(targetId, reviverId, sourceName);
@@ -64,28 +64,50 @@ namespace KeepMeAlive.Gameplay.Revival
                 yield break;
             }
 
-            if (RevivePolicy.RequiresItem)
+            // The Defib revive demands a defib when its type requires one, and spends one of its uses whenever the type
+            // consumes them and the reviver is carrying one. Self and Team demand a stim instead, which is single-use
+            // and deleted as the revive starts. Nothing is spent unless everything required is there.
+            bool hasDefib = ModUtils.HasDefib(itemOwner);
+            bool needDefib = RevivePolicy.RequireDefib(source);
+            bool needStim = RevivePolicy.RequireStim(source);
+
+            if (needStim && !ModUtils.HasStim(itemOwner))
             {
-                bool hasItem = ModUtils.HasReviveItem(itemOwner);
-                if (hasItem && RevivePolicy.MustConsumeItem(source))
-                {
-                    yield return ModUtils.ConsumeReviveItemCoroutine(itemOwner, $"{sourceName}ReviveItem", ok => hasItem = ok);
-                }
+                RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                onDenied(PlayerFacingMessages.Revive.MissingStimCanceled, Color.red);
+                yield break;
+            }
 
-                if (!hasItem)
+            if (hasDefib && RevivePolicy.ShouldConsumeDefib(source))
+            {
+                yield return ModUtils.ConsumeDefibCoroutine(itemOwner, $"{sourceName}Defib", ok => hasDefib = ok);
+            }
+
+            if (needDefib && !hasDefib)
+            {
+                RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                onDenied(PlayerFacingMessages.Revive.MissingDefibCanceled, Color.red);
+                yield break;
+            }
+
+            if (needStim)
+            {
+                bool stimSpent = false;
+                yield return ModUtils.ConsumeStimCoroutine(itemOwner, $"{sourceName}Stim", ok => stimSpent = ok);
+                if (!stimSpent)
                 {
                     RevivalAuthority.NotifyReviveStartCancelled(targetId);
-                    onDenied(PlayerFacingMessages.Revive.MissingItemCanceled, Color.red);
+                    onDenied(PlayerFacingMessages.Revive.MissingStimCanceled, Color.red);
                     yield break;
                 }
+            }
 
-                // Revalidate the target after the item-consumption coroutine yields.
-                if (!stillValid())
-                {
-                    RevivalAuthority.NotifyReviveStartCancelled(targetId);
-                    onDenied(null, Color.yellow);
-                    yield break;
-                }
+            // Revalidate the target after the item-consumption coroutine yields.
+            if (!stillValid())
+            {
+                RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                onDenied(null, Color.yellow);
+                yield break;
             }
 
             onStart();
@@ -127,13 +149,13 @@ namespace KeepMeAlive.Gameplay.Revival
         }
 
         //====================[ Team Revive Start ]====================
-        internal static void BeginTeamReviveStart(Player reviver, string targetId)
+        internal static void BeginAssistedReviveStart(Player reviver, string targetId, ReviveSource source)
         {
             string reviverId = reviver.ProfileId;
-            ReviveDebug.Log("TeamAuth_Begin", targetId, false, $"reviver={reviverId}");
+            ReviveDebug.Log("TeamAuth_Begin", targetId, false, $"reviver={reviverId} source={source}");
 
             Plugin.StaticCoroutineRunner.StartCoroutine(AuthorizeAndStartCoroutine(
-                ReviveSource.Team,
+                source,
                 reviver,
                 targetId,
                 reviverId,
@@ -152,8 +174,8 @@ namespace KeepMeAlive.Gameplay.Revival
                 {
                     // No loopback: apply what the TeamReviveStart receivers apply, then broadcast, so
                     // this machine stops offering "Revive" on a teammate who is already being revived.
-                    RevivePacketHandlers.ApplyRevivingState(targetId, RMSession.GetPlayerState(targetId), ReviveSource.Team, reviverId);
-                    FikaBridge.SendTeamReviveStartPacket(targetId, reviverId);
+                    RevivePacketHandlers.ApplyRevivingState(targetId, RMSession.GetPlayerState(targetId), source, reviverId);
+                    FikaBridge.SendTeamReviveStartPacket(targetId, reviverId, source);
                     RevivalDebugLog.LogReviveFlow($"Revive hold completed for {targetId}");
                 },
                 onDenied: (message, color) =>
@@ -185,8 +207,7 @@ namespace KeepMeAlive.Gameplay.Revival
                 return;
             }
 
-            var source = (ReviveSource)st.ReviveRequestedSource;
-            float duration = RevivePolicy.GetProgressDuration(source);
+            float duration = RevivePolicy.ProgressSeconds;
             Trace("StartRevive", player, st, $"| duration={duration:F2} reason={reason}");
 
             RevivePresentation.PlayReviveAnimation(player, st);
@@ -238,7 +259,7 @@ namespace KeepMeAlive.Gameplay.Revival
             var source = (ReviveSource)st.ReviveRequestedSource;
             string reviverId = source == ReviveSource.Self ? string.Empty : (st.CurrentReviverId ?? string.Empty);
 
-            FikaBridge.SendRevivedPacket(pid, reviverId);
+            FikaBridge.SendRevivedPacket(pid, reviverId, source);
             st.ResyncCooldown = -1f;
             Plugin.StaticCoroutineRunner.StartCoroutine(NotifyReviveCompleteCoroutine(pid));
 
@@ -277,7 +298,7 @@ namespace KeepMeAlive.Gameplay.Revival
         }
 
         // Remote players only: Fika does not echo my RevivedPacket to the local player.
-        internal static void FinalizeRevivalFromPacket(Player player, string playerId, string reviverId)
+        internal static void FinalizeRevivalFromPacket(Player player, string playerId, string reviverId, ReviveSource source)
         {
             // player may be null when this machine has no Player object for them; the state
             // bookkeeping and ghost-flag clear must still happen.
@@ -288,8 +309,8 @@ namespace KeepMeAlive.Gameplay.Revival
             }
 
             var st = RMSession.GetPlayerState(playerId);
-            bool isSelf = string.IsNullOrEmpty(reviverId) || reviverId == playerId;
-            st.ReviveRequestedSource = (int)(isSelf ? ReviveSource.Self : ReviveSource.Team);
+            bool isSelf = source == ReviveSource.Self;
+            st.ReviveRequestedSource = (int)source;
             st.CurrentReviverId = isSelf ? string.Empty : reviverId;
 
             PostRevivalController.BeginPostRevival(player, playerId, st, applyFinalize: false);

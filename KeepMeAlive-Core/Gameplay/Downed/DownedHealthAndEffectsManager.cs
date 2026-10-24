@@ -42,7 +42,7 @@ namespace KeepMeAlive.Gameplay.Downed
             _restoreAfterDamage = false;
         }
 
-        // Restore destroyed body parts to 1 HP on downed entry (toggleable via config).
+        // Restore destroyed body parts to 1 HP on downed entry; without it a lethal hit would kill instead of down.
         public static void RestoreVitalsToMinimum(Player player)
         {
             if (player == null || !player.IsYourPlayer || player.ActiveHealthController is not { } hc) return;
@@ -83,11 +83,11 @@ namespace KeepMeAlive.Gameplay.Downed
                         // Added directly: DoStun scales the duration by the player's eye protection
                         // (thermals make it zero), so the stun length would not be seconds.
                         const float stunSeconds = DownedStunSeconds;
-                        if (Cfg.Revival.ApplyStunOnDowned)
+                        if (Cfg.Downed.ApplyStunOnDowned)
                             hc.AddEffect<ActiveHealthController.Stun>(EBodyPart.Head, 0f, ActiveHealthController.Stun.StunBuildUpTime + stunSeconds, null, 1f);
                     });
 
-                    if (Cfg.Revival.ApplyContusionOnDowned)
+                    if (Cfg.Downed.ApplyContusionOnDowned)
                     {
                         // The contusion's tinnitus ducks and muffles the whole mix for 15 s; it would bury the cry
                         // of going down, so it starts once the cry has been heard.
@@ -125,7 +125,7 @@ namespace KeepMeAlive.Gameplay.Downed
             var hc = player.ActiveHealthController;
             if (hc == null) return;
             GodMode.RunWithDamageEnabled(player, () =>
-                TinnitusScope.Run(() => hc.DoContusion(Cfg.Revival.CriticalStateSeconds, 1f)));
+                TinnitusScope.Run(() => hc.DoContusion(Cfg.Downed.CriticalStateSeconds, 1f)));
         }
     }
 }

@@ -28,6 +28,8 @@ namespace KeepMeAlive.Networking.Fika
             manager.RegisterPacket<PlayerStateResetPacket, NetPeer>(OnPlayerStateReset);
             manager.RegisterPacket<PlayerStateResyncPacket, NetPeer>(OnPlayerStateResync);
             manager.RegisterPacket<GetUpPacket, NetPeer>(OnGetUp);
+            manager.RegisterPacket<SelfStimPacket, NetPeer>(OnSelfStim);
+            manager.RegisterPacket<SelfStimCancelPacket, NetPeer>(OnSelfStimCancel);
         }
 
         //====================[ Shared Helpers ]====================
@@ -103,12 +105,6 @@ namespace KeepMeAlive.Networking.Fika
         //====================[ TeamHelp ]====================
         private static void OnTeamHelp(TeamHelpPacket packet, NetPeer peer)
         {
-            if (!RevivePolicy.IsEnabled(ReviveSource.Team))
-            {
-                RevivalDebugLog.LogNetworkTrace($"[Packet] TeamHelp ignored (team revive disabled): {packet.reviverId} -> {packet.reviveeId}");
-                return;
-            }
-
             RevivalDebugLog.LogNetworkTrace($"[Packet] TeamHelp: {packet.reviverId} started helping {packet.reviveeId}");
 
             var playerState = RMSession.GetPlayerState(packet.reviveeId);
@@ -119,7 +115,7 @@ namespace KeepMeAlive.Networking.Fika
             if (!IsLocalPlayer(packet.reviverId))
             {
                 var reviver = ModUtils.GetPlayerById(packet.reviverId);
-                float hold = RevivePolicy.GetHoldDuration(ReviveSource.Team);
+                float hold = RevivePolicy.GetHoldDuration(TeamSourceFor(playerState, packet.reviverId));
                 // Dragging the body: the reviver's right hand jabs a stim into it instead (DraggerArms).
                 if (playerState.CurrentDraggerId == packet.reviverId) DraggerArms.BeginStim(reviver, hold);
                 else DefibHands.Begin(reviver, hold);
@@ -146,7 +142,7 @@ namespace KeepMeAlive.Networking.Fika
                     Hud.HideHold();
                     playerState.RevivePromptTimer?.Stop();
                     playerState.RevivePromptTimer = null;
-                    Hud.ShowStatus(Hud.StatusKind.BeingRevived, RevivePolicy.GetHoldDuration(ReviveSource.Team), reviverName);
+                    Hud.ShowStatus(Hud.StatusKind.BeingRevived, RevivePolicy.GetHoldDuration(TeamSourceFor(playerState, packet.reviverId)), reviverName);
                 }
             }
             catch (Exception ex)
@@ -154,6 +150,10 @@ namespace KeepMeAlive.Networking.Fika
                 Plugin.LogSource.LogWarning($"[VFX_UI] TeamHelp notify failed: {ex.Message}");
             }
         }
+
+        // A reviver who is dragging the body jabs a stim (Team); anyone else uses the defibrillator (Defib).
+        internal static ReviveSource TeamSourceFor(RMPlayer revivee, string reviverId) =>
+            !string.IsNullOrEmpty(reviverId) && revivee.CurrentDraggerId == reviverId ? ReviveSource.Team : ReviveSource.Defib;
 
         // Records a helper's claim on a downed player. Also called by the helper itself before sending
         // TeamHelp, since Fika never echoes its own packet back.
@@ -186,7 +186,7 @@ namespace KeepMeAlive.Networking.Fika
             playerState.ReviveClaimTime = Time.time;
             // Start watchdog: if the reviver disconnects before ReviveStart arrives, TickDowned will clear IsBeingRevived (#1).
             // It must outlast the reviver's hold plus the server authorization and the ReviveStart packet.
-            playerState.BeingRevivedWatchdogTimer = RevivePolicy.GetHoldDuration(ReviveSource.Team) + ReviverWatchdogGraceSeconds;
+            playerState.BeingRevivedWatchdogTimer = RevivePolicy.GetHoldDuration(TeamSourceFor(playerState, reviverId)) + ReviverWatchdogGraceSeconds;
             return true;
         }
 
@@ -290,12 +290,6 @@ namespace KeepMeAlive.Networking.Fika
         //====================[ TeamReviveStart ]====================
         private static void OnTeamReviveStart(TeamReviveStartPacket packet, NetPeer peer)
         {
-            if (!RevivePolicy.IsEnabled(ReviveSource.Team))
-            {
-                RevivalDebugLog.LogNetworkTrace($"[Packet] TeamReviveStart ignored (team revive disabled): {packet.reviverId} -> {packet.reviveeId}");
-                return;
-            }
-
             RevivalDebugLog.LogNetworkTrace($"[Packet] TeamReviveStart: {packet.reviverId} started reviving {packet.reviveeId}");
 
             var playerState = RMSession.GetPlayerState(packet.reviveeId);
@@ -312,10 +306,11 @@ namespace KeepMeAlive.Networking.Fika
             }
 
             var prevState = playerState.State;
-            ApplyRevivingState(packet.reviveeId, playerState, ReviveSource.Team, packet.reviverId);
+            var startSource = packet.source == (int)ReviveSource.Defib ? ReviveSource.Defib : ReviveSource.Team;
+            ApplyRevivingState(packet.reviveeId, playerState, startSource, packet.reviverId);
 
             RevivalDebugLog.LogStateTrace("TeamReviveStartPacket", packet.reviveeId, prevState, playerState.State,
-                $"| source=Team reviver='{packet.reviverId}'");
+                $"| source={startSource} reviver='{packet.reviverId}'");
 
             string reviverName = ModUtils.GetPlayerDisplayName(packet.reviverId);
             NotifySafe("TeamReviveStart", Color.cyan,
@@ -329,7 +324,7 @@ namespace KeepMeAlive.Networking.Fika
             RMSession.SetPlayerState(playerId, RMState.Reviving);
             playerState.ReviveRequestedSource = (int)source;
             playerState.CurrentReviverId = source == ReviveSource.Self ? string.Empty : (reviverId ?? string.Empty);
-            playerState.IsBeingRevived = source == ReviveSource.Team;
+            playerState.IsBeingRevived = source != ReviveSource.Self;
             playerState.ClearSelfReviveInput();
             playerState.BeingRevivedWatchdogTimer = 0f;
         }
@@ -347,14 +342,14 @@ namespace KeepMeAlive.Networking.Fika
                 Plugin.LogSource.LogWarning($"[Packet] Revived: Player {packet.playerId} not found; applying state only");
             }
 
-            bool isSelfRevive = string.IsNullOrEmpty(packet.reviverId) || packet.reviverId == packet.playerId;
+            var source = (ReviveSource)packet.source;
             var playerState = RMSession.GetPlayerState(packet.playerId);
             var prevState = playerState.State;
 
             RevivalDebugLog.LogStateTrace("RevivedPacket", packet.playerId, prevState, RMState.Revived,
-                $"| reviver='{packet.reviverId}' invul={PostReviveEffects.GetInvulnDuration(isSelfRevive ? ReviveSource.Self : ReviveSource.Team):F2}");
+                $"| reviver='{packet.reviverId}' invul={PostReviveEffects.GetInvulnDuration(source):F2}");
 
-            RevivalController.FinalizeRevivalFromPacket(player, packet.playerId, packet.reviverId);
+            RevivalController.FinalizeRevivalFromPacket(player, packet.playerId, packet.reviverId, source);
 
             if (IsLocalPlayer(packet.playerId))
             {
@@ -362,7 +357,6 @@ namespace KeepMeAlive.Networking.Fika
             }
 
             string display = ModUtils.GetPlayerDisplayName(packet.playerId);
-            var source = isSelfRevive ? ReviveSource.Self : ReviveSource.Team;
             NotifySafe("Revived", Color.green,
                 () => PlayerFacingMessages.ReviveComplete.ObserverBySource(display, source),
                 packet.reviverId, packet.playerId);
@@ -404,6 +398,26 @@ namespace KeepMeAlive.Networking.Fika
             // On death the flag is cleared without re-adding bots (the body is dead anyway).
             if (packet.isDead) GhostMode.ClearGhostFlag(packet.playerId);
             else GhostMode.ExitGhostModeById(packet.playerId);
+        }
+
+        //====================[ SelfStim ]====================
+        // Observers: the owner is holding their self-revive key; the body plays the self-stim for as long (BodyRagdoll).
+        private static void OnSelfStim(SelfStimPacket packet, NetPeer peer)
+        {
+            if (IsLocalPlayer(packet.playerId)) return;
+            RevivalDebugLog.LogNetworkTrace($"[Packet] SelfStim: {packet.playerId} hold {packet.holdSeconds:F1}s yaw {packet.yaw:F0}");
+            var player = ModUtils.GetPlayerById(packet.playerId);
+            if (player == null) return;
+            SelfStimFlow.MakeLimp(packet.playerId);
+            BodyRagdoll.BeginSelfStim(player, packet.holdSeconds, packet.yaw);
+        }
+
+        private static void OnSelfStimCancel(SelfStimCancelPacket packet, NetPeer peer)
+        {
+            if (IsLocalPlayer(packet.playerId)) return;
+            RevivalDebugLog.LogNetworkTrace($"[Packet] SelfStimCancel: {packet.playerId}");
+            var player = ModUtils.GetPlayerById(packet.playerId);
+            if (player != null) BodyRagdoll.CancelSelfStim(player);
         }
 
         //====================[ GetUp ]====================

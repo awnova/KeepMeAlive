@@ -60,7 +60,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
                 return false;
             }
 
-            bool hasItem = ModUtils.FindReviveItem(player) != null;
+            bool hasItem = ModUtils.FindDefib(player) != null;
             var driver = hasItem ? DefibHandsDriver.Create(player, holdSeconds) : null;
             if (driver == null)
             {

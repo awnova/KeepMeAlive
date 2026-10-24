@@ -33,7 +33,7 @@ namespace KeepMeAlive.Patches
     }
 
     //====================[ BodyProxyFindInteractablePatch ]====================
-    // Replaces FindInteractable to skip proxied player capsules and resolve body hits to their target.
+    // Replaces FindInteractable to skip proxied player capsules and resolve body hits to their BodyInteractable.
     internal class BodyProxyFindInteractablePatch : ModulePatch
     {
         private static readonly UnityEngine.RaycastHit[] Hits = new UnityEngine.RaycastHit[32];
@@ -72,7 +72,7 @@ namespace KeepMeAlive.Patches
             if (UnityEngine.Physics.Linecast(ray.origin, hit.point, GameWorld.LootMaskObstruction)) return false;
 
             var proxy = go.GetComponent<BodyInteractable.BodyInteractableProxy>();
-            __result = proxy != null && proxy.Owner != null ? proxy.Owner.InteractionTarget : go;
+            __result = proxy != null && proxy.Owner != null ? proxy.Owner.gameObject : go;
             return false;
         }
 

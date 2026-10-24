@@ -33,10 +33,9 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         // Furthest the wrists may bend to lay the hands as the track has them (degrees); the track is a valid pose of this
         // rig, so this only stops a wrist breaking when the player's proportions differ.
         private const float MaxWristBend = 90f;
-        // The most of its length an arm may be stretched to reach the track's palm (the arm then keeps a bend), and the most both
-        // palms are moved together (m) to get there. Crouched, the shoulders sit off the camera's line (the body is turned and
-        // rolled under the head: one shoulder was 20 cm behind the camera, the other 8), so the track's palm can be further
-        // from one shoulder than the arm is long; it went straight.
+        // Maximum arm reach as a share of its full length. Crouching can put a shoulder behind the camera,
+        // leaving the track's palm too far away and straightening the arm. Shift both palms together by at most
+        // MaxPairShift to preserve the track's spacing while keeping a bend.
         private const float MaxReachShare = 0.90f;
         private const float MaxPairShift = 0.12f;
 
@@ -341,8 +340,8 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             return bend.sqrMagnitude > 0.5f ? bend : Vector3.ProjectOnPlane(Vector3.down, wrist - shoulder).normalized;
         }
 
-        // The track's frame: its aim on the camera's line of sight. Only the camera's forward is taken, so its roll and
-        // shake never tips the hands sideways. The game turns the camera (MouseLook) before my pass.
+        // The track's frame follows the camera's forward, so camera roll and shake do not tip the hands sideways.
+        // MouseLook turns the camera before this pass.
         private Quaternion Frame() => Quaternion.LookRotation(_camera.forward, Vector3.up) * _toTrack;
     }
 }

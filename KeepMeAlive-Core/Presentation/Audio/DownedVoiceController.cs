@@ -23,10 +23,12 @@ namespace KeepMeAlive.Presentation.Audio
     // game and Fika.
     //
     // What the owner says while BleedingOut, on one timeline (Voice):
-    //   - a hit line for every knock to the body: going down, being picked up, being dropped (Cry). When the hit that
-    //     did it already said one, that is the cry. A new wound's hit line is the game's and always cuts in.
+    //   - a hit line for every knock to the body: going down, being picked up, being dropped, a stim's needle going in
+    //     and coming out (Cry). When the hit that did it already said one, that is the cry. A new wound's hit line is
+    //     the game's and always cuts in.
     //   - breathing, in bouts with a quiet spell between (the game's breath loop is held off).
-    //   - an agony line every so often, the odd bleeding line and one near-death line, lying still or crawling.
+    //   - an agony line every so often and the odd bleeding line, lying still or crawling.
+    //   - near-death lines at fixed marks, a minute or more apart (2:00 and 1:00 left of 3:00).
     // I wait for any sound to end before playing another, then play a breath bout.
     // When a revive starts the voice goes back to the game: the player's health effects pick the breathing (HandBack).
     // A downed player's death line is the owner's too, said before the body dies (SpeakDeathLine).
@@ -43,9 +45,10 @@ namespace KeepMeAlive.Presentation.Audio
         // After any other sound the next bout follows shortly, like gasping after crying out.
         private const float BreathAfterSoundMin = 2f;
         private const float BreathAfterSoundMax = 5f;
-        // Chance a line is the near-death one, until it has been said once in this downed state. A 3-minute
-        // bleed-out has about four lines, so this makes the one near-death line likely without forcing it.
-        private const float NearDeathChance = 0.4f;
+        // The near-death ("I'm out") lines are said at fixed points of the bleed-out, not at random: one less than its
+        // whole minutes, evenly spaced, so at least a minute apart. 3:00 says them at 2:00 and 1:00 left, 4:00 at
+        // 3:00, 2:00 and 1:00; under 2:00 none.
+        private const float NearDeathMinSpacing = 60f;
         // Chance a line is a bleeding one; otherwise it is an agony line.
         private const float BleedChance = 0.1f;
         // I keep these lines below hit lines (OnBeingHurt, 2), so a new wound always cuts
@@ -79,7 +82,8 @@ namespace KeepMeAlive.Presentation.Audio
         {
             // Bleeding out and alive: the sounds are the owner's.
             public bool Owned;
-            public bool NearDeathSaid;
+            // How many of the near-death marks have been said in this downed state.
+            public int NearDeathSaid;
             // A dragger had the body at the last tick. A change is a knock.
             public bool WasDragged;
             // I wait for the current sound to end before starting another.
@@ -151,7 +155,7 @@ namespace KeepMeAlive.Presentation.Audio
                 // Out of the bleed-out alive (a revive starting, or one completing): the voice is the game's again.
                 if (voice.Owned && alive && !st.KillOverride) HandBack(player);
                 voice.Owned = false;
-                if (!st.IsCritical) voice.NearDeathSaid = false;
+                if (!st.IsCritical) voice.NearDeathSaid = 0;
                 return;
             }
 
@@ -185,6 +189,20 @@ namespace KeepMeAlive.Presentation.Audio
 
             if (Time.time < voice.BusyUntil) return;
 
+            // A near-death mark passed: its line goes first, at the first free moment.
+            int due = NearDeathMarksPassed(st.CriticalTimer);
+            if (voice.NearDeathSaid < due)
+            {
+                bool played = PlayOwn(player, voice, EPhraseTrigger.HurtNearDeath, LineImportance);
+                // As for a line: a voice without the bank skips the mark. Marks passed together are said once.
+                if (played || !speaker.Busy) voice.NearDeathSaid = due;
+                if (played)
+                {
+                    voice.NextLineTime = Mathf.Max(voice.NextLineTime, Time.time + RandomLineInterval());
+                    return;
+                }
+            }
+
             if (Time.time >= voice.NextLineTime)
             {
                 bool played = PlayLine(player, voice);
@@ -217,6 +235,16 @@ namespace KeepMeAlive.Presentation.Audio
 
         private static float RandomLineInterval() => UnityEngine.Random.Range(LineIntervalMin, LineIntervalMax);
 
+        // How many near-death marks the bleed-out has passed, with this much of it left.
+        private static int NearDeathMarksPassed(float timeLeft)
+        {
+            float total = Mathf.Max(1f, SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds);
+            int slots = Mathf.FloorToInt(total / NearDeathMinSpacing);
+            if (slots < 2) return 0;
+            float step = total / slots;
+            return Mathf.Clamp(Mathf.FloorToInt((total - timeLeft) / step), 0, slots - 1);
+        }
+
         // I manage this player's voice while they are alive and bleeding out. Their vanilla breath loop is held off
         // meanwhile. A revive in progress is the game's.
         public static bool OwnsBreath(Player player, RMPlayer st) =>
@@ -239,13 +267,39 @@ namespace KeepMeAlive.Presentation.Audio
             try
             {
                 var voice = GetVoice(player.ProfileId);
-                voice.NearDeathSaid = false;
+                voice.NearDeathSaid = 0;
                 TakeOver(voice, RMSession.GetPlayerState(player.ProfileId));
                 Cry(player, voice);
             }
             catch (Exception ex)
             {
                 Plugin.LogSource.LogWarning($"[DownedVoice] OnLocalDowned failed for {player.ProfileId}: {ex.Message}");
+            }
+        }
+
+        // The stim's needle going into the body or coming out of it (a revive's jab, the dragger's or the player's own):
+        // a knock like the others. Only the owner of the body says it; every peer's copy gets it from Fika. A completed
+        // revive has already left the bleed-out (Reviving) by the time the dragger's hand draws the needle out, and the
+        // voice was handed back to the game; the cry is still the owner's.
+        public static void OnStimNeedle(Player player)
+        {
+            if (player == null || !player.IsYourPlayer || player.Speaker == null) return;
+            if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return;
+            if (!OwnsBreath(player, st) && !(st.State == RMState.Reviving && player.HealthController is { IsAlive: true })) return;
+            try
+            {
+                var voice = GetVoice(player.ProfileId);
+                // Hand the voice back now if Tick has not yet: its HandBack would cut the cry short.
+                if (st.State == RMState.Reviving && voice.Owned)
+                {
+                    HandBack(player);
+                    voice.Owned = false;
+                }
+                Cry(player, voice);
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogWarning($"[DownedVoice] OnStimNeedle failed for {player.ProfileId}: {ex.Message}");
             }
         }
 
@@ -362,15 +416,9 @@ namespace KeepMeAlive.Presentation.Audio
         }
 
         //====================[ Lines And Breath ]====================
-        // One near-death line per downed state, the odd bleeding line, otherwise an agony line.
+        // The odd bleeding line, otherwise an agony line. The near-death lines are on their marks (TickOwner).
         private static bool PlayLine(Player player, Voice voice)
         {
-            if (!voice.NearDeathSaid && UnityEngine.Random.value < NearDeathChance
-                && PlayOwn(player, voice, EPhraseTrigger.HurtNearDeath, LineImportance))
-            {
-                voice.NearDeathSaid = true;
-                return true;
-            }
             if (UnityEngine.Random.value < BleedChance
                 && (PlayOwn(player, voice, EPhraseTrigger.Bleeding, LineImportance, include: BleedClips)
                     || PlayOwn(player, voice, EPhraseTrigger.Bleeding, LineImportance)))

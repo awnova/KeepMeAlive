@@ -17,7 +17,8 @@ public enum RevivalState
 public enum RevivalSourceKind
 {
     Self = 0,
-    Team = 1
+    Team = 1,
+    Defib = 2
 }
 
 //====================[ RevivalAuthorityRequest ]====================

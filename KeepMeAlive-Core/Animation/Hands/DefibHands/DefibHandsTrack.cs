@@ -6,7 +6,7 @@ using UnityEngine;
 namespace KeepMeAlive.Animation.Hands.DefibHands
 {
     //====================[ DefibHandsTrack ]====================
-    // The reviver's hands through the defibrillator sequence, baked by Tools/DefibHands/bake_defib_hands.py from
+    // The reviver's hands through the defibrillator sequence, baked by Build/Tools/DefibHands/bake_defib_hands.py from
     // Stand_To_Crouch_Defib: per frame, for each hand, the palm (wrist joint), the hand's forward and up axes and the
     // elbow, relative to the Ribcage (where the game's camera pivots) in the character frame (+Z facing, +Y up). The
     // hand's axes come from joint positions (palm -> middle knuckle; index -> little knuckle line), so they mean the

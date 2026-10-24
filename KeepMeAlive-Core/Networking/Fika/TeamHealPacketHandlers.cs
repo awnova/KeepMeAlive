@@ -8,8 +8,8 @@ using UnityEngine;
 namespace KeepMeAlive.Networking.Fika
 {
     //====================[ TeamHealPacketHandlers ]====================
-    // Receivers for the team-heal request/result packet pair. Kept separate from
-    // RevivePacketHandlers since team healing is not part of the revival state machine.
+    // Receivers for the team-heal packets: the request, the patient's answer when the use starts, and when it ends.
+    // Kept separate from RevivePacketHandlers since team healing is not part of the revival state machine.
     internal static class TeamHealPacketHandlers
     {
         //====================[ Registration ]====================
@@ -17,6 +17,7 @@ namespace KeepMeAlive.Networking.Fika
         {
             manager.RegisterPacket<TeamHealPacket, NetPeer>(OnTeamHeal);
             manager.RegisterPacket<TeamHealResultPacket, NetPeer>(OnTeamHealResult);
+            manager.RegisterPacket<TeamHealUseEndedPacket, NetPeer>(OnTeamHealUseEnded);
         }
 
         //====================[ TeamHeal ]====================
@@ -47,7 +48,7 @@ namespace KeepMeAlive.Networking.Fika
             Player patient = ModUtils.GetPlayerById(packet.patientId);
             if (patient == null || !patient.IsYourPlayer) return;
 
-            Plugin.StaticCoroutineRunner.StartCoroutine(TeamMedical.ApplyIncomingTeamHeal(patient, packet.healerId, packet.itemId));
+            Plugin.StaticCoroutineRunner.StartCoroutine(TeamHealPatient.ApplyIncoming(patient, packet.healerId, packet.itemId));
         }
 
         //====================[ TeamHealResult ]====================
@@ -56,7 +57,16 @@ namespace KeepMeAlive.Networking.Fika
             var local = ModUtils.GetYourPlayer();
             if (local == null || local.ProfileId != packet.healerId) return;
 
-            TeamMedical.OnHealResult(packet.itemId, packet.success, packet.reason);
+            TeamMedical.OnHealResult(packet.itemId, packet.success, packet.reason, packet.useSeconds);
+        }
+
+        //====================[ TeamHealUseEnded ]====================
+        private static void OnTeamHealUseEnded(TeamHealUseEndedPacket packet, NetPeer peer)
+        {
+            var local = ModUtils.GetYourPlayer();
+            if (local == null || local.ProfileId != packet.healerId) return;
+
+            TeamMedical.OnHealEnded(packet.itemId, packet.completed);
         }
     }
 }

@@ -87,8 +87,8 @@ namespace KeepMeAlive.Utilities
         private static string NormalizeDisplayName(string name) =>
             char.ToUpperInvariant(name[0]) + name.Substring(1).ToLowerInvariant();
 
-        //====================[ Revive Item ]====================
-        internal static Item FindReviveItem(Player player)
+        //====================[ Defib ]====================
+        internal static Item FindDefib(Player player)
         {
             try
             {
@@ -98,33 +98,56 @@ namespace KeepMeAlive.Utilities
                     return null;
                 }
 
-                string templateId = SyncedServerConfigStore.Config.RevivalItem.TemplateId;
-                if (string.IsNullOrEmpty(templateId)) return null;
+                const string templateId = DefibIds.TemplateId;
 
+                // The one with the fewest uses left is used, so partly used ones are finished before a fresh one is
+                // started. A defib is removed on its last use, so none has less than 1.
+                Item best = null;
+                float bestUses = float.MaxValue;
                 foreach (var it in items)
                 {
-                    if (it != null && string.Equals(it.StringTemplateId, templateId, StringComparison.OrdinalIgnoreCase))
+                    if (it == null || !string.Equals(it.StringTemplateId, templateId, StringComparison.OrdinalIgnoreCase))
                     {
-                        return it;
+                        continue;
+                    }
+
+                    float uses = UsesLeft(it);
+                    if (uses < bestUses)
+                    {
+                        best = it;
+                        bestUses = uses;
                     }
                 }
 
-                Plugin.LogSource.LogDebug($"FindReviveItem: no item matching {templateId} found for {player?.ProfileId}");
+                if (best != null)
+                {
+                    return best;
+                }
+
+                Plugin.LogSource.LogDebug($"FindDefib: no item matching {templateId} found for {player?.ProfileId}");
             }
             catch (Exception ex)
             {
-                Plugin.LogSource.LogError($"FindReviveItem error: {ex.Message}");
+                Plugin.LogSource.LogError($"FindDefib error: {ex.Message}");
             }
 
             return null;
         }
 
-        public static bool HasReviveItem(Player player) => FindReviveItem(player) != null;
+        public static bool HasDefib(Player player) => FindDefib(player) != null;
 
-        // Consumes one revive item from the local player's inventory as a network transaction
+        // Remaining uses from the item's resource counter (the server sets MaxResource); 0 when spent. Without a counter
+        // (server not configured for uses) the defib counts as a single use.
+        private static float UsesLeft(Item defib)
+        {
+            var resource = defib.GetItemComponent<ResourceComponent>();
+            return resource != null && resource.MaxResource > 0f ? Mathf.Floor(resource.Value) : 1f;
+        }
+
+        // Spends one use of the local player's defib; the last use removes the item as a network transaction
         // on their controller. Resolves the item after waiting for the inventory to be free.
-        // onDone reports whether the item was actually removed.
-        public static IEnumerator ConsumeReviveItemCoroutine(Player player, string label, Action<bool> onDone)
+        // onDone reports whether a use was actually spent.
+        public static IEnumerator ConsumeDefibCoroutine(Player player, string label, Action<bool> onDone)
         {
             if (player == null || !player.IsYourPlayer)
             {
@@ -135,14 +158,90 @@ namespace KeepMeAlive.Utilities
             yield return WaitForInventoryFree(player, 2f, label);
 
             var controller = player.InventoryController;
-            var item = FindReviveItem(player);
+            var item = FindDefib(player);
             if (controller == null || item == null)
             {
-                Plugin.LogSource.LogWarning($"[{label}] No revive item left to consume for {player.ProfileId}");
+                Plugin.LogSource.LogWarning($"[{label}] No defib left to consume for {player.ProfileId}");
                 onDone?.Invoke(false);
                 yield break;
             }
 
+            // More than one use left: lower the counter, redraw the cell and tell the other peers (the counter is not an
+            // inventory operation, so Fika does not carry it). The profile saves the value at raid end.
+            var resource = item.GetItemComponent<ResourceComponent>();
+            if (resource != null && resource.MaxResource > 0f && UsesLeft(item) > 1f)
+            {
+                resource.Value = UsesLeft(item) - 1f;
+                item.RaiseRefreshEvent();
+                FikaBridge.SendDefibUsesPacket(player.ProfileId, item.Id, resource.Value);
+                onDone?.Invoke(true);
+                yield break;
+            }
+
+            yield return RemoveOneCoroutine(controller, item, label, onDone);
+        }
+
+        //====================[ Stim ]====================
+        // The reviver's stim: the first item carrying the stim template (Adrenaline unless the server names another).
+        internal static Item FindStim(Player player)
+        {
+            try
+            {
+                var items = player?.Inventory?.AllRealPlayerItems;
+                if (items == null)
+                {
+                    return null;
+                }
+
+                string templateId = StimIds.TemplateId;
+                foreach (var it in items)
+                {
+                    if (it != null && string.Equals(it.StringTemplateId, templateId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return it;
+                    }
+                }
+
+                Plugin.LogSource.LogDebug($"FindStim: no item matching {templateId} found for {player?.ProfileId}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"FindStim error: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        public static bool HasStim(Player player) => FindStim(player) != null;
+
+        // Deletes one stim from the local player's inventory as a network transaction on their controller.
+        // onDone reports whether it was removed.
+        public static IEnumerator ConsumeStimCoroutine(Player player, string label, Action<bool> onDone)
+        {
+            if (player == null || !player.IsYourPlayer)
+            {
+                onDone?.Invoke(false);
+                yield break;
+            }
+
+            yield return WaitForInventoryFree(player, 2f, label);
+
+            var controller = player.InventoryController;
+            var item = FindStim(player);
+            if (controller == null || item == null)
+            {
+                Plugin.LogSource.LogWarning($"[{label}] No stim left to consume for {player.ProfileId}");
+                onDone?.Invoke(false);
+                yield break;
+            }
+
+            yield return RemoveOneCoroutine(controller, item, label, onDone);
+        }
+
+        // Removes the item, or one of its stack, through the owner's controller, which Fika replicates and the host
+        // validates. onDone reports whether it was removed.
+        private static IEnumerator RemoveOneCoroutine(InventoryController controller, Item item, string label, Action<bool> onDone)
+        {
             OperationResult operation = item.StackObjectsCount > 1
                 ? (OperationResult)ItemManipulator.SplitToNowhere(item, 1, controller, controller, simulate: true)
                 : (OperationResult)ItemManipulator.Remove(item, controller, simulate: true);
@@ -160,7 +259,7 @@ namespace KeepMeAlive.Utilities
             bool failed = task.IsFaulted || task.Result == null || task.Result.Failed;
             if (failed)
             {
-                Plugin.LogSource.LogWarning($"[{label}] Revive item removal failed for {item.Id}: {(task.IsFaulted ? task.Exception?.GetBaseException().Message : task.Result?.Error)}");
+                Plugin.LogSource.LogWarning($"[{label}] Removal failed for {item.Id}: {(task.IsFaulted ? task.Exception?.GetBaseException().Message : task.Result?.Error)}");
             }
             onDone?.Invoke(!failed);
         }

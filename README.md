@@ -11,7 +11,7 @@ Based on the original revival mod by **KaikiNoodles** and **thuynguyentrungdang*
 - Self and teammate revives, with configurable timing, lives, and item use.
 - Configurable recovery after revival, including health restoration, status effects, and temporary invulnerability.
 - Teammate medical assistance for health, bleeds, fractures, comfort effects, and nutrition.
-- Configurable downed movement, protections, and hardcore behavior.
+- Configurable downed movement, protections, and an optional chance that a headshot kills outright.
 
 ## Requirements
 
@@ -36,11 +36,17 @@ To give up, hold the configured key (default `Backspace`) for two seconds while 
 
 A teammate can tap **Support** on your downed PMC to drag you along. The dragger crouches, puts away their weapon, and holds you by the shoulders. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, go down, or your body rolls out of their hands. A revive by anyone else also ends the drag, and a body being dragged has no interaction menu for anyone. The dragger can revive the body they are holding by holding the interact key (shown on the bottom strip as "Hold [key] Revive"): their right hand takes a stim pen from their chest and holds it in your shoulder for the whole revive while the left keeps hold, then they put you down when it is done (a cancelled revive just puts the pen away and the drag carries on). You stay limp where you are released until you move.
 
-The default revive item is the item with template ID `5c052e6986f7746b207bc3c9`. By default, the server offers it from Therapist for 200,000 roubles at loyalty level 2.
+The defib (template ID `5c052e6986f7746b207bc3c9`) is fixed and not configurable. Therapist always sells it; by default the price is 200,000 roubles at loyalty level 2.
 
 ## Configuration
 
 Server gameplay settings are in `user/mods/KeepMeAlive/config.json` inside `SPT_Runtime`. The server creates this file with defaults and shares its settings with clients. Restart the server after editing it.
+
+### Revive types
+
+`Gameplay` has three revive sections, each with its own settings: **Self** (you stab yourself with a stim), **Team** (a teammate who is dragging you stabs you with a stim) and **Defib** (a teammate who is not dragging you uses the defibrillator). Shared downed-state settings (bleed-out time, lives pool, crawl speed) are in `Gameplay.Downed`.
+
+Each of `Self`, `Team` and `Defib` has: `Enabled`, `HoldSeconds`, `LivesCost`, `RequireDefib`, `ConsumeDefib`, `RestoreBodyParts`, `RestorePercent` (Head, Chest, Stomach, Arms, Legs), `RemoveLightBleeds`, `RemoveHeavyBleeds`, `RemoveLegFractures`, `RemoveArmFractures`, `InvulnerabilityDurationSeconds`, `InvulnerabilitySpeedPercent`, `CooldownSeconds`, `ApplyContusionOnRevive`, `ContusionDurationSeconds`, `ApplyPainOnRevive` and `PainDurationSeconds`. `RequireDefib` makes the reviver carry a defib; `ConsumeDefib` uses one up when they have one. Only the `Defib` revive uses a defib; `Self` and `Team` ignore both settings. `Self` and `Team` also have `RequireStim` (off by default): the reviver must carry a stim, which is deleted when the revive starts. `Gameplay.StimItemId` names the stim's template id; leave it empty for the game's Adrenaline stim. The config schema is version 1; an older `config.json` is rewritten with defaults for the new sections.
 
 Client-only options, including the self-revive and give-up keys and tinnitus audio, are in `BepInEx/config/com.awnova.keepmealive.cfg`.
 
@@ -48,7 +54,7 @@ Client-only options, including the self-revive and give-up keys and tinnitus aud
 
 - **Revive options are unavailable:** Check the server log for `[SyncConfig]` warnings and confirm `SPT_Runtime/user/mods/KeepMeAlive/config.json` exists.
 - **Self-revive is unavailable:** Check that it is enabled in the server config, you have enough lives, and you carry the configured item.
-- **Teammate revive does not work:** Check that team revive is enabled, the reviver meets the configured requirements, and Fika's built-in revive system is disabled.
+- **Teammate revive does not work:** Check that the reviver meets the configured requirements, and Fika's built-in revive system is disabled.
 
 ## Build from source
 

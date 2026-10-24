@@ -139,7 +139,7 @@ namespace KeepMeAlive.Presentation.Effects
                     if (!Bind()) return;
                 }
 
-                float total = Mathf.Max(1f, SyncedServerConfigStore.Config.Gameplay.Revival.CriticalStateSeconds);
+                float total = Mathf.Max(1f, SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds);
                 float t = Mathf.Clamp01(1f - st.CriticalTimer / total); // 0 at the start of bleed-out, 1 at the end
 
                 // Full strength, easing down to the configured minimum between the lub and the dub.

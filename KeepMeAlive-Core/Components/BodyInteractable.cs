@@ -25,17 +25,12 @@ namespace KeepMeAlive.Components
 
         //====================[ Fields ]====================
         public Player Revivee { get; set; }
-        public bool HasActivePicker => _activeMedPicker != null;
 
-        // What a proxy hit resolves to: the open med picker, otherwise this body.
-        public GameObject InteractionTarget => _activeMedPicker != null ? _activeMedPicker.gameObject : gameObject;
-        
         private readonly List<Collider> _colliders = new List<Collider>();
         // Proxy GameObjects live under the revivee's bone transforms, not under this object,
         // so they must be destroyed explicitly.
         private readonly List<GameObject> _proxyObjects = new List<GameObject>();
         private bool _collidersEnabled;
-        private MedPickerInteractable _activeMedPicker;
         private bool _isLootScreenOpen;
         private GamePlayerOwner _lootOwner;
 
@@ -45,7 +40,6 @@ namespace KeepMeAlive.Components
         private float _nextSignaturePoll;
         private const float SignaturePollInterval = 0.25f;
 
-        public static float ReviveHoldTime => RevivePolicy.GetHoldDuration(ReviveSource.Team);
 
         //====================[ Bone Collider Filter ]====================
         // Covered by HeadCommon, so not mirrored.
@@ -91,8 +85,8 @@ namespace KeepMeAlive.Components
 
             UpdateLookHint();
 
-            // While the picker is open, proxy hits resolve to it and it refreshes its own list.
-            if (!HasActivePicker) RefreshListIfActionsChanged();
+            // While the team-heal wheel is open on this body its menu stays empty (BuildActions).
+            if (!TeamHealWheel.IsOpenFor(Revivee.ProfileId)) RefreshListIfActionsChanged();
         }
 
         // The bottom-strip banner while the local player looks at this body: what a tap and a hold of interact do.
@@ -102,7 +96,7 @@ namespace KeepMeAlive.Components
         private void UpdateLookHint()
         {
             var viewer = _viewerOwner != null ? _viewerOwner.Player : null;
-            bool looking = viewer != null && !_isLootScreenOpen && !HasActivePicker && ReferenceEquals(viewer.InteractableObject, this);
+            bool looking = viewer != null && !_isLootScreenOpen && !TeamHealWheel.IsOpen && ReferenceEquals(viewer.InteractableObject, this);
             if (!looking)
             {
                 ClearLookHint();
@@ -202,7 +196,7 @@ namespace KeepMeAlive.Components
             // Another attach may have finished during the wait.
             if (player.gameObject.GetComponentInChildren<BodyInteractable>() != null) yield break;
 
-            // Root GO holds the BodyInteractable component and serves as MedPicker anchor
+            // Root GO holds the BodyInteractable component; proxy hits on the bone colliders resolve to it.
             var go = new GameObject("Body Interactable");
             go.transform.SetParent(player.gameObject.transform, false);
             go.transform.localPosition = new Vector3(0f, 0.9f, 0f);
@@ -329,10 +323,17 @@ namespace KeepMeAlive.Components
         // hold: let go inside it and it was a tap; still held when it ends and it becomes the revive hold.
         private const float SupportTapWindow = 0.3f;
 
-        internal static bool CanTeamRevive(Player reviver, RMPlayer reviveeState) =>
-            RevivePolicy.IsEnabled(ReviveSource.Team)
-            && (Cfg.Development.NoReviveItemRequired || ModUtils.HasReviveItem(reviver))
-            && reviveeState.LivesRemaining >= Cfg.Revival.TeamReviveLivesCost;
+        // Dragging the body is a Team revive (stim jab); anything else is a Defib revive.
+        internal static ReviveSource SourceFor(Player reviver, RMPlayer reviveeState) =>
+            RevivePacketHandlers.TeamSourceFor(reviveeState, reviver.ProfileId);
+
+        internal static bool CanTeamRevive(Player reviver, RMPlayer reviveeState)
+        {
+            var source = SourceFor(reviver, reviveeState);
+            return RevivePolicy.IsEnabled(source)
+                   && RevivePolicy.HasRequiredItem(source, reviver)
+                   && reviveeState.LivesRemaining >= RevivePolicy.LivesCost(source);
+        }
 
         public void OnSupport(GamePlayerOwner owner)
         {
@@ -358,25 +359,23 @@ namespace KeepMeAlive.Components
 
             var st = RMSession.GetPlayerState(Revivee.ProfileId);
             if (st.State != RMState.BleedingOut) return;
-            if (!RevivePolicy.IsEnabled(ReviveSource.Team))
-                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.TeamReviveDisabled);
-            else if (!Cfg.Development.NoReviveItemRequired && !ModUtils.HasReviveItem(owner.Player))
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NoReviveItemFound);
-            else if (st.LivesRemaining < Cfg.Revival.TeamReviveLivesCost)
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NotEnoughLives(Cfg.Revival.TeamReviveLivesCost));
+            var source = SourceFor(owner.Player, st);
+            int cost = RevivePolicy.LivesCost(source);
+            if (!RevivePolicy.IsEnabled(source))
+                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.Disabled);
+            else if (!RevivePolicy.HasRequiredItem(source, owner.Player))
+                VFX_UI.Text(Color.red, RevivePolicy.MissingItem(source, owner.Player) == RevivePolicy.RequiredItem.Stim
+                    ? PlayerFacingMessages.Revive.NoStimFound
+                    : PlayerFacingMessages.Revive.NoDefibFound);
+            else if (st.LivesRemaining < cost)
+                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NotEnoughLives(cost));
             else
-                OnRevive(owner);
+                OnRevive(owner, source);
         }
 
-        public void OnRevive(GamePlayerOwner owner)
+        public void OnRevive(GamePlayerOwner owner, ReviveSource source)
         {
             if (Revivee is null || owner?.Player is null) return;
-
-            if (!RevivePolicy.IsEnabled(ReviveSource.Team))
-            {
-                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.TeamReviveDisabled);
-                return;
-            }
 
             // A hold is already running; a second press must not start another.
             if (CrouchHoldState.IsActive(owner.Player)) return;
@@ -385,16 +384,20 @@ namespace KeepMeAlive.Components
             {
                 owner = owner,
                 targetId = Revivee.ProfileId,
-                reviverId = owner.Player.ProfileId
+                reviverId = owner.Player.ProfileId,
+                source = source
             };
 
-            if (!CrouchHoldState.Begin(owner.Player, ReviveHoldTime, handler.Complete, Revivee))
+            float holdTime = RevivePolicy.GetHoldDuration(source);
+            // A body in the reviver's hands is already in front of them: turning to face it would swing it out of their grip.
+            Player facing = DownedDragController.IsLocalHoldingBody ? null : Revivee;
+            if (!CrouchHoldState.Begin(owner.Player, holdTime, handler.Complete, facing))
             {
                 VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.CannotReviveWhileMoving);
                 return;
             }
 
-            Hud.ShowHold(Hud.HoldKind.ReviveTeammate, ReviveHoldTime, ModUtils.GetPlayerDisplayName(Revivee.ProfileId));
+            Hud.ShowHold(Hud.HoldKind.ReviveTeammate, holdTime, ModUtils.GetPlayerDisplayName(Revivee.ProfileId));
             // Claims locally too (no loopback), so this machine also drops any drag of the body.
             FikaBridge.ClaimTeamHelp(Revivee.ProfileId, owner.Player.ProfileId);
             // The defibrillator comes out for the hold (the weapon comes back when it ends), only with the claim:
@@ -404,8 +407,8 @@ namespace KeepMeAlive.Components
             var reviveeState = RMSession.GetPlayerState(Revivee.ProfileId);
             if (reviveeState.CurrentReviverId == owner.Player.ProfileId)
             {
-                if (reviveeState.CurrentDraggerId == owner.Player.ProfileId) DraggerArms.BeginStim(owner.Player, ReviveHoldTime);
-                else DefibHands.Begin(owner.Player, ReviveHoldTime);
+                if (source == ReviveSource.Team) DraggerArms.BeginStim(owner.Player, holdTime);
+                else DefibHands.Begin(owner.Player, holdTime);
             }
         }
 
@@ -432,8 +435,10 @@ namespace KeepMeAlive.Components
             RMSession.TryGetPlayerState(Revivee.ProfileId, out var reviveeState);
 
             // I expose no actions during revive progress.
-            // This prevents both revive/search and category picker interactions while settling.
             if (reviveeState?.State == RMState.Reviving) return actions;
+
+            // The team-heal wheel open on this body replaces its menu.
+            if (TeamHealWheel.IsOpenFor(Revivee.ProfileId)) return actions;
 
             // A body in someone's hands has no menu: the dragger revives it from their own prompt (DownedDragController), and
             // nobody else can step in.
@@ -459,22 +464,15 @@ namespace KeepMeAlive.Components
                     });
                 }
             }
-            else if (Cfg.TeamHealing.Enabled)
+            else if (Cfg.TeamHealing.Enabled && PatientNeeds.NeedsAny(Revivee))
             {
-                foreach (MedCategory cat in Enum.GetValues(typeof(MedCategory)))
+                // Interact: opens the team-heal wheel; greyed out when the healer carries nothing for any of their needs.
+                actions.Actions.Add(new InteractionAction
                 {
-                    MedCategory captured = cat;
-                    bool patientNeeds = TeamMedical.PatientNeedsCategory(Revivee, captured);
-                    if (!patientNeeds) continue; // Only show category if the patient needs healing for it
-
-                    bool hasMeds = TeamMedical.HealerHasMedForCategory(owner.Player, captured);
-                    actions.Actions.Add(new InteractionAction
-                    {
-                        Action = () => OpenFilteredMedPicker(owner, captured),
-                        Name = CategoryLabel(captured),
-                        Disabled = !hasMeds
-                    });
-                }
+                    Action = () => TeamHealWheel.Open(owner.Player, Revivee),
+                    Name = PlayerFacingMessages.Interaction.InteractAction,
+                    Disabled = !TeamMedical.HasAnythingToGive(owner.Player, Revivee)
+                });
             }
 
             return actions;
@@ -543,7 +541,7 @@ namespace KeepMeAlive.Components
             EndLootSession();
             try { owner?.CloseInventoryIfOpen(); } catch { }
 
-            ForceClosePicker();
+            if (Revivee != null) TeamHealWheel.CloseFor(Revivee.ProfileId, "teammate's body interactable removed");
             for (int i = 0; i < _proxyObjects.Count; i++)
             {
                 if (_proxyObjects[i] != null) Destroy(_proxyObjects[i]);
@@ -560,51 +558,13 @@ namespace KeepMeAlive.Components
             }
         }
 
-        public void OpenFilteredMedPicker(GamePlayerOwner owner, MedCategory category)
-        {
-            if (Revivee == null || owner?.Player == null || RMSession.IsPlayerCritical(Revivee.ProfileId)) return;
-
-            ForceClosePicker();
-
-            // No collider: proxy hits on the body route to the picker (see InteractionTarget).
-            var pickerGo = new GameObject(PlayerFacingMessages.Interaction.MedPickerName);
-            pickerGo.transform.SetParent(transform, false);
-            var picker = pickerGo.AddComponent<MedPickerInteractable>();
-            picker.Init(owner.Player, Revivee, this, category);
-            _activeMedPicker = picker;
-        }
-
-        // Only the picker currently open may clear it; a stale picker's late close must not.
-        public void RestoreFromPicker(MedPickerInteractable picker)
-        {
-            if (ReferenceEquals(_activeMedPicker, picker)) _activeMedPicker = null;
-        }
-
-        public void ForceClosePicker()
-        {
-            if (_activeMedPicker != null) Destroy(_activeMedPicker.gameObject);
-            _activeMedPicker = null;
-        }
-
-        private static string CategoryLabel(MedCategory cat)
-        {
-            return cat switch
-            {
-                MedCategory.Bleeds => PlayerFacingMessages.Interaction.MedicBleeds,
-                MedCategory.Breaks => PlayerFacingMessages.Interaction.MedicBreaks,
-                MedCategory.Health => PlayerFacingMessages.Interaction.MedicHealth,
-                MedCategory.Comfort => PlayerFacingMessages.Interaction.MedicComfort,
-                MedCategory.Nutrition => PlayerFacingMessages.Interaction.MedicNutrition,
-                _ => cat.ToString()
-            };
-        }
-
         //====================[ ReviveCompleteHandler ]====================
         internal class ReviveCompleteHandler
         {
             public GamePlayerOwner owner;
             public string targetId;
             public string reviverId;
+            public ReviveSource source;
 
             public void Complete(bool result)
             {
@@ -622,7 +582,7 @@ namespace KeepMeAlive.Components
                         return;
                     }
 
-                    RevivalController.BeginTeamReviveStart(owner.Player, targetId);
+                    RevivalController.BeginAssistedReviveStart(owner.Player, targetId, source);
                 }
                 else
                 {
