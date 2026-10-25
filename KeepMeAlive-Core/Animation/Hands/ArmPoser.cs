@@ -63,7 +63,7 @@ namespace KeepMeAlive.Animation.Hands
         //====================[ Build ]====================
         // The rig's twist relaxers: on Forearm2 and Forearm3 of each arm only.
         public static TwistRelax[] FindTwists(Player player) =>
-            player.PlayerBones.Ribcage.Original.GetComponentsInChildren<TwistRelax>(true);
+            PlayerUtils.GetRibcage(player).GetComponentsInChildren<TwistRelax>(true);
 
         // An arm of a player (T is the class to make: this, or one that adds to it). The shoulder and elbow bones are the
         // ones carrying the arm's colliders (Base HumanL/RUpperarm and Base HumanL/RForearm1). Throws without them.

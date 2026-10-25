@@ -25,6 +25,7 @@ namespace KeepMeAlive.Runtime.Lifecycle
 
             // The defibrillator's track and paddles, built now so the first revive does not hitch.
             DefibHands.Preload();
+            StimSounds.Preload();
 
             // Inject defib icon eagerly so FikaHealthBar nameplates can show it.
             // FikaHealthBar.AddEffect() looks up effect.Type in _effectIcons when
@@ -37,8 +38,11 @@ namespace KeepMeAlive.Runtime.Lifecycle
 
         private static IEnumerator FetchLivesCoroutine(string profileId)
         {
+            int raidGen = RMSession.RaidGeneration;
             var task = RevivalAuthority.GetLivesAsync(profileId);
             while (!task.IsCompleted) yield return null;
+
+            if (raidGen != RMSession.RaidGeneration) yield break;
 
             if (task.IsFaulted || task.Result == null)
             {
@@ -58,7 +62,7 @@ namespace KeepMeAlive.Runtime.Lifecycle
         {
             try
             {
-                if (!global::Fika.Core.FikaPlugin.Instance.Settings.ReviveConfig.Enabled) return;
+                if (!FikaBridge.IsFikaBuiltInReviveEnabled()) return;
 
                 const string msg = "KeepMeAlive: Fika's built-in revive system is enabled on the server. Disable it (Fika server config) - it conflicts with KeepMeAlive.";
                 Plugin.LogSource.LogError(msg);

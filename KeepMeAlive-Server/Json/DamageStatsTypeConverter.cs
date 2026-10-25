@@ -19,10 +19,7 @@ public class RevivalJsonConverterRegistrator : IJsonConverterRegistrator
 }
 
 //====================[ DamageStatsTypeConverter ]====================
-// End-raid DamageHistory can carry numeric EDamageType values (EFT writes an undefined/combined
-// [Flags] value as a number), but SPT models DamageStats.Type as a string and has no number-to-
-// string converter, so /client/match/local/end fails to deserialize. Numeric Type values are
-// converted to their EDamageType names; everything else deserializes exactly as SPT would.
+// Converts numeric EFT damage types to names while leaving other values to SPT's serializer.
 public sealed class DamageStatsTypeConverter : JsonConverter<DamageStats>
 {
     //====================[ Lookup ]====================

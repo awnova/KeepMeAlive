@@ -14,7 +14,14 @@ namespace KeepMeAlive.Gameplay.Revival
     //   Presentation: RevivePresentation
     internal static class RevivalController
     {
+        // Longest the revive start waits for the server's authorization before treating it as denied, and for an
         //====================[ Shared Revive Start ]====================
+        // inventory operation in flight before spending the item (s). For a team revive both run after the hold, inside
+        // the patient's watchdog grace (RevivePacketHandlers.ReviverWatchdogGraceSeconds, 10 s), with room for the
+        // item's removal and the ReviveStart packet.
+        private const float AuthorizeTimeoutSeconds = 6f;
+        private const float ConsumeWaitSeconds = 2f;
+
         // Authorize with the server -> revalidate -> check/consume the item -> onStart.
         // Releases the server reservation when the attempt ends before starting. onDenied gets a
         // null message when a newer attempt supersedes this one.
@@ -31,9 +38,20 @@ namespace KeepMeAlive.Gameplay.Revival
             ReviveDebug.Log("Auth_Start", targetId, false, $"reviver={reviverId} source={sourceName}");
 
             var task = RevivalAuthority.AuthorizeReviveStartAsync(targetId, reviverId, sourceName);
-            while (!task.IsCompleted)
+            float deadline = Time.time + AuthorizeTimeoutSeconds;
+            while (!task.IsCompleted && Time.time < deadline)
             {
                 yield return null;
+            }
+
+            // No answer in time: denied. The hold it ends blocks bleed-out and give-up, so it must not wait on the server
+            // for as long as the HTTP layer would. The cancel queues behind the request, so a late grant is rolled back.
+            if (!task.IsCompleted)
+            {
+                Plugin.LogSource.LogWarning($"[ReviveAuth] No authorization answer after {AuthorizeTimeoutSeconds:F0}s for target={targetId} reviver={reviverId} source={sourceName}; treating it as denied.");
+                RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                onDenied(PlayerFacingMessages.ReviveDenied.AuthorizationFailed, Color.yellow);
+                yield break;
             }
 
             bool allowed = false;
@@ -67,20 +85,34 @@ namespace KeepMeAlive.Gameplay.Revival
             // The Defib revive demands a defib when its type requires one, and spends one of its uses whenever the type
             // consumes them and the reviver is carrying one. Self and Team demand a stim instead, which is single-use
             // and deleted as the revive starts. Nothing is spent unless everything required is there.
-            bool hasDefib = ModUtils.HasDefib(itemOwner);
+            bool hasDefib = InventoryUtils.HasDefib(itemOwner);
             bool needDefib = RevivePolicy.RequireDefib(source);
             bool needStim = RevivePolicy.RequireStim(source);
 
-            if (needStim && !ModUtils.HasStim(itemOwner))
+            if (needStim && !InventoryUtils.HasStim(itemOwner))
             {
                 RevivalAuthority.NotifyReviveStartCancelled(targetId);
                 onDenied(PlayerFacingMessages.Revive.MissingStimCanceled, Color.red);
                 yield break;
             }
 
-            if (hasDefib && RevivePolicy.ShouldConsumeDefib(source))
+            bool consumeDefib = hasDefib && RevivePolicy.ShouldConsumeDefib(source);
+            if (consumeDefib || needStim)
             {
-                yield return ModUtils.ConsumeDefibCoroutine(itemOwner, $"{sourceName}Defib", ok => hasDefib = ok);
+                // Wait out any inventory operation in flight here, not inside the consume coroutines, so the target and
+                // reviver are checked again right before anything is spent.
+                yield return InventoryUtils.WaitForInventoryFree(itemOwner, ConsumeWaitSeconds, $"{sourceName}Revive");
+                if (!stillValid())
+                {
+                    RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                    onDenied(null, Color.yellow);
+                    yield break;
+                }
+            }
+
+            if (consumeDefib)
+            {
+                yield return InventoryUtils.ConsumeDefibCoroutine(itemOwner, $"{sourceName}Defib", ok => hasDefib = ok);
             }
 
             if (needDefib && !hasDefib)
@@ -93,7 +125,7 @@ namespace KeepMeAlive.Gameplay.Revival
             if (needStim)
             {
                 bool stimSpent = false;
-                yield return ModUtils.ConsumeStimCoroutine(itemOwner, $"{sourceName}Stim", ok => stimSpent = ok);
+                yield return InventoryUtils.ConsumeStimCoroutine(itemOwner, $"{sourceName}Stim", ok => stimSpent = ok);
                 if (!stimSpent)
                 {
                     RevivalAuthority.NotifyReviveStartCancelled(targetId);
@@ -162,8 +194,7 @@ namespace KeepMeAlive.Gameplay.Revival
                 stillValid: () =>
                 {
                     // The reviver may have gone down or died while authorizing / consuming the item.
-                    if (reviver == null || reviver.HealthController == null || !reviver.HealthController.IsAlive
-                        || RMSession.IsPlayerCritical(reviverId))
+                    if (!PlayerUtils.IsAliveAndStanding(reviver))
                         return false;
 
                     var target = RMSession.GetPlayerState(targetId);
@@ -213,7 +244,9 @@ namespace KeepMeAlive.Gameplay.Revival
             RevivePresentation.PlayReviveAnimation(player, st);
 
             st.CriticalStateMainTimer?.Stop();
-            st.CriticalStateMainTimer = Hud.ShowStatus(Hud.StatusKind.Reviving, duration);
+            st.CriticalStateMainTimer = null;
+            st.ReviveStatusTimer?.Stop();
+            st.ReviveStatusTimer = Hud.ShowStatus(Hud.StatusKind.Reviving, duration);
 
             Hud.HideHold();
             Hud.HideStrip();
@@ -265,11 +298,6 @@ namespace KeepMeAlive.Gameplay.Revival
 
             // Sets Revived, stops the presentation, god mode, effects and the invulnerability panel.
             PostRevivalController.BeginPostRevival(player, pid, st, applyFinalize: true);
-
-            var msg = source == ReviveSource.Self
-                ? PlayerFacingMessages.ReviveComplete.LocalSelf
-                : PlayerFacingMessages.ReviveComplete.LocalTeam;
-            PlayerMessageRouter.Notify(Color.green, msg, MessageAudience.LocalPlayer);
             Trace("CompleteLocalRevive", player, st, $"| reviver='{reviverId}'");
             Plugin.LogSource.LogInfo($"[Downed] revive complete for {pid}");
         }
@@ -278,12 +306,15 @@ namespace KeepMeAlive.Gameplay.Revival
         // the coroutine resumes, never on the background task.
         private static IEnumerator NotifyReviveCompleteCoroutine(string playerId)
         {
+            int raidGen = RMSession.RaidGeneration;
             var task = RevivalAuthority.NotifyReviveCompleteAsync(playerId);
 
             while (!task.IsCompleted)
             {
                 yield return null;
             }
+
+            if (raidGen != RMSession.RaidGeneration) yield break;
 
             if (task.IsFaulted || task.Result == null)
             {

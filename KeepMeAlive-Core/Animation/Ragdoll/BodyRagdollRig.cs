@@ -251,9 +251,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 case EBodyPartColliderType.RightCalf:
                     joint.axis = new Vector3(0f, 0f, 1f);
                     joint.swingAxis = new Vector3(0f, 1f, 0f);
-                    // A knee is a hinge: 5 deg of side play, not 25. With 25 the heel's ground drag bent the shin sideways at
-                    // the knee until it sat on that limit (log 2026-10-19: calves 19-26 deg sideways while dragged), so a lower
-                    // leg slowly splayed out instead of trailing.
+                    // Limit sideways knee motion while allowing the leg to trail during a drag.
                     SetLimits(joint, -115f, 10f, 5f, 5f);
                     break;
             }
@@ -319,7 +317,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         // then restores the current visual bone pose on screen.
         private static void ZeroJointsAtMusclePose(Player player, Session session, SkeletonCopy settlePose)
         {
-            Transform pelvis = player.PlayerBones.Pelvis.Original;
+            Transform pelvis = PlayerUtils.GetPelvis(player);
             Transform[] all = pelvis.GetComponentsInChildren<Transform>(true);
             var savedRot = new Quaternion[all.Length];
             var savedPos = new Vector3[all.Length];

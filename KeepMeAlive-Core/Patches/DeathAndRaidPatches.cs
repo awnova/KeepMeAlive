@@ -23,7 +23,7 @@ namespace KeepMeAlive.Patches
             try
             {
                 var player = __instance.Player;
-                if (player == null || player.IsAI || !player.IsYourPlayer) return true;
+                if (!PlayerUtils.IsLocalHuman(player)) return true;
 
                 if (DeathMode.ShouldAllowDeathFromHeadshot(player, __instance, damageType)
                     || !DeathMode.ShouldBlockDeath(player, damageType))
@@ -32,7 +32,7 @@ namespace KeepMeAlive.Patches
                     return true;
                 }
 
-                if (!RMSession.TryGetPlayerState(player.ProfileId, out var st) || st.State is RMState.None or RMState.CoolDown)
+                if (!RMSession.TryGetPlayerState(player.ProfileId, out var st) || st.State == RMState.None)
                 {
                     DownedStateController.EnterDowned(player, damageType);
                 }
@@ -58,8 +58,7 @@ namespace KeepMeAlive.Patches
         [PatchPrefix]
         private static void Prefix(ActiveHealthController __instance, out bool __state)
         {
-            var player = __instance.Player;
-            __state = player != null && !player.IsAI && player.IsYourPlayer;
+            __state = PlayerUtils.IsLocalHuman(__instance.Player);
             if (__state) DownedHealthAndEffectsManager.BeginApplyDamage();
         }
 
@@ -85,7 +84,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance == null || __instance.IsAI) return;
+                if (!PlayerUtils.IsHuman(__instance)) return;
                 BodyRagdoll.ReleaseForDeath(__instance);
             }
             catch (Exception ex)
@@ -104,7 +103,7 @@ namespace KeepMeAlive.Patches
             AccessTools.Method(typeof(global::Fika.Core.Main.GameMode.CoopGame), nameof(global::Fika.Core.Main.GameMode.CoopGame.Extract));
 
         [PatchPrefix]
-        private static void Prefix() => DownedStateController.HandleRaidTerminating("coop-game-extract");
+        private static void Prefix() => DownedStateController.HandleLocalPlayerExtracting();
     }
 
     internal class RaidCoopStopSafetyPatch : ModulePatch

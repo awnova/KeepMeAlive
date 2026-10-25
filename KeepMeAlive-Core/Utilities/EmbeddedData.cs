@@ -6,11 +6,11 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace KeepMeAlive.Animation.Shared
+namespace KeepMeAlive.Utilities
 {
+    // What the mod ships inside the DLL (Resources/: baked JSON, prop bundles, WAVs, PNG icons): opening it, reading it as
     //====================[ EmbeddedData ]====================
-    // The baked animation data shipped inside the DLL (Resources/*.json, *.png): opening it, checking a JSON file's
-    // schema, and keeping what was built from it so each file is read once.
+    // bytes, a JSON file checked for its schema or a PNG as a sprite, and keeping what was built from it so each file is read once.
     internal static class EmbeddedData
     {
         // Built from each resource, or null when it could not be (so it is not tried again).
@@ -20,6 +20,27 @@ namespace KeepMeAlive.Animation.Shared
         public static Stream Open(string resource) =>
             Assembly.GetExecutingAssembly().GetManifestResourceStream(resource)
             ?? throw new InvalidDataException($"resource {resource} missing");
+
+        // The resource's bytes; throws when it is not in the DLL.
+        public static byte[] ReadBytes(string resource)
+        {
+            using var stream = Open(resource);
+            using var memory = new MemoryStream();
+            stream.CopyTo(memory);
+            return memory.ToArray();
+        }
+
+        // A PNG resource as a centred sprite, its texture uploaded and its CPU copy dropped; throws when it cannot be decoded.
+        public static Sprite ReadSprite(string resource, bool mipmaps, FilterMode filter = FilterMode.Bilinear)
+        {
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, mipmaps) { wrapMode = TextureWrapMode.Clamp, filterMode = filter };
+            if (!tex.LoadImage(ReadBytes(resource), markNonReadable: true))
+            {
+                UnityEngine.Object.Destroy(tex);
+                throw new InvalidDataException($"resource {resource} is not a PNG Unity can decode");
+            }
+            return Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        }
 
         // A JSON resource, checked to be of the schema the reader expects.
         public static JObject ReadJson(string resource, string schema)

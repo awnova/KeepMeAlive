@@ -9,14 +9,8 @@ using UnityEngine;
 
 namespace KeepMeAlive.Presentation.Effects
 {
+    // Applies the local downed screen effects, including tunnel vision, a red edge, and fading grayscale.
     //====================[ DownedScreenEffects ]====================
-    // Local-only screen treatment while downed, driven by RMPlayer.CriticalTimer:
-    //   - tunnel vision and the low-health blend, added to EFT's own EffectsController accumulators
-    //     as stub health effects;
-    //   - a red screen edge, drawn by the BloodOnScreen patches (DownedBloodVignettePatches);
-    //   - grayscale that deepens as the timer runs down.
-    // The vignette and red edge ease down slightly between the heartbeat's lub and dub.
-    // Only this class's own stubs are ever removed; EFT's health effects are left alone.
     internal static class DownedScreenEffects
     {
         //====================[ Constants ]====================
@@ -77,7 +71,7 @@ namespace KeepMeAlive.Presentation.Effects
         //====================[ Public API ]====================
         public static void Start(Player player)
         {
-            if (player == null || !player.IsYourPlayer || !KeepMeAliveSettings.ENABLE_DOWNED_SCREEN_EFFECTS.Value) return;
+            if (!PlayerUtils.IsLocalPlayer(player) || !KeepMeAliveSettings.ENABLE_DOWNED_SCREEN_EFFECTS.Value) return;
             _active = true;
             _lastTick = Time.unscaledTime;
             _nextRebind = 0f;

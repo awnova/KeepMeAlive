@@ -105,39 +105,11 @@ namespace KeepMeAlive.Presentation.HUD
         {
             try
             {
-                var asm = Assembly.GetExecutingAssembly();
-                const string resource = "KeepMeAlive.Resources.revive_item_cooldown.png";
-
-                using var stream = asm.GetManifestResourceStream(resource);
-                if (stream == null)
-                {
-                    Plugin.LogSource.LogWarning(
-                        $"[DefibCooldownIcon] Embedded resource '{resource}' not found.");
-                    return null;
-                }
-
-                byte[] bytes;
-                using (var br = new System.IO.BinaryReader(stream))
-                    bytes = br.ReadBytes((int)stream.Length);
-
-                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                if (!tex.LoadImage(bytes))
-                {
-                    Plugin.LogSource.LogWarning("[DefibCooldownIcon] Texture2D.LoadImage returned false.");
-                    return null;
-                }
-
-                Plugin.LogSource.LogDebug(
-                    $"[DefibCooldownIcon] Loaded defib PNG: {tex.width}x{tex.height}");
-                return Sprite.Create(
-                    tex,
-                    new Rect(0f, 0f, tex.width, tex.height),
-                    new Vector2(0.5f, 0.5f),
-                    100f);
+                return EmbeddedData.ReadSprite("KeepMeAlive.Resources.revive_item_cooldown.png", mipmaps: false);
             }
             catch (Exception ex)
             {
-                Plugin.LogSource.LogError($"[DefibCooldownIcon] LoadDefibSprite error: {ex}");
+                Plugin.LogSource.LogError($"[DefibCooldownIcon] Could not load the icon: {ex.Message}");
                 return null;
             }
         }

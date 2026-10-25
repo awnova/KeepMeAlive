@@ -17,7 +17,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             var clip = BakedClip.Settle ?? throw new InvalidOperationException("the settle clip did not load");
             var rig = ClipRig.TryBuild(player, clip) ?? throw new InvalidOperationException("the settle clip does not fit this skeleton");
 
-            Transform[] all = player.PlayerBones.Pelvis.Original.GetComponentsInChildren<Transform>(true);
+            Transform[] all = PlayerUtils.GetPelvis(player).GetComponentsInChildren<Transform>(true);
             var bind = SkeletonBind.Read(player, new HashSet<Transform>(all));
             var rotations = new Quaternion[rig.Count];
             rig.Evaluate(clip, 0f, rotations);

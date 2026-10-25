@@ -28,7 +28,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         // Builds the meshes once (at raid load, so the first revive does not hitch).
         public static bool LoadAssets()
         {
-            if (_meshes != null) return true;
+            if (_meshes != null && _meshes[0] != null && _meshes[1] != null) return true;
             if (_loadFailed) return false;
             try
             {

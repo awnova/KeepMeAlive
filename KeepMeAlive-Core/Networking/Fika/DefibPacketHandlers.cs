@@ -22,30 +22,26 @@ namespace KeepMeAlive.Networking.Fika
             RevivalDebugLog.LogNetworkTrace($"[Packet] DefibUses: {packet.ownerId} item {packet.itemId} usesLeft={packet.usesLeft:F0}");
 
             // The owner already holds the new value.
-            Player owner = ModUtils.GetPlayerById(packet.ownerId);
+            Player owner = PlayerUtils.GetPlayerById(packet.ownerId);
             if (owner == null || owner.IsYourPlayer) return;
 
-            var items = owner.Inventory?.AllRealPlayerItems;
-            if (items == null) return;
-
-            foreach (Item item in items)
+            Item item = InventoryUtils.FindItemById(owner, packet.itemId);
+            if (item == null)
             {
-                if (item == null || !string.Equals(item.Id, packet.itemId, System.StringComparison.Ordinal)) continue;
-
-                var resource = item.GetItemComponent<ResourceComponent>();
-                if (resource == null) return;
-
-                // Uses only go down, so a late or repeated packet can never put a use back.
-                if (packet.usesLeft < resource.Value)
-                {
-                    resource.Value = packet.usesLeft;
-                    item.RaiseRefreshEvent();
-                }
+                // The item is not in the observed copy of that inventory (yet); nothing to correct.
+                RevivalDebugLog.LogNetworkTrace($"[Packet] DefibUses: item {packet.itemId} not found on {packet.ownerId}");
                 return;
             }
 
-            // The item is not in the observed copy of that inventory (yet); nothing to correct.
-            RevivalDebugLog.LogNetworkTrace($"[Packet] DefibUses: item {packet.itemId} not found on {packet.ownerId}");
+            var resource = item.GetItemComponent<ResourceComponent>();
+            if (resource == null) return;
+
+            // Uses only go down, so a late or repeated packet can never put a use back.
+            if (packet.usesLeft < resource.Value)
+            {
+                resource.Value = packet.usesLeft;
+                item.RaiseRefreshEvent();
+            }
         }
     }
 }

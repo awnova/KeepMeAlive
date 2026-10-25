@@ -106,6 +106,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
         public bool   hasDropRest;           // Where the body was put down after a drag (a late joiner missed the release)
         public float  dropX, dropZ, dropSpineYaw;
         public bool   dropOnBack;
+        public bool   selfReviving;
 
         public void Deserialize(NetDataReader reader)
         {
@@ -127,6 +128,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
             dropZ                 = reader.GetFloat();
             dropSpineYaw          = reader.GetFloat();
             dropOnBack            = reader.GetBool();
+            selfReviving          = reader.GetBool();
         }
 
         public void Serialize(NetDataWriter writer)
@@ -149,6 +151,7 @@ namespace KeepMeAlive.Networking.Fika.Packets
             writer.Put(dropZ);
             writer.Put(dropSpineYaw);
             writer.Put(dropOnBack);
+            writer.Put(selfReviving);
         }
     }
 

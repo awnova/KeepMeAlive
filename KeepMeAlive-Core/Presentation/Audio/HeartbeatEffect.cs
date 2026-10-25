@@ -40,6 +40,7 @@ namespace KeepMeAlive.Presentation.Audio
         private static float _prevBeatInterval;
 
         private static bool _isRunning;
+        private static Coroutine _activeCoroutine;
 
         // Age of the current beat in seconds, its interval, and the previous beat's interval.
         // False when no heartbeat is playing (clip missing, ended, or stopped).
@@ -56,7 +57,7 @@ namespace KeepMeAlive.Presentation.Audio
         {
             try
             {
-                if (player == null || st == null || !player.IsYourPlayer) return;
+                if (!PlayerUtils.IsLocalPlayer(player) || st == null) return;
                 if (st.HeartbeatCoroutine != null) return; // already running
 
                 var clip = GetClip();
@@ -65,7 +66,8 @@ namespace KeepMeAlive.Presentation.Audio
                 _isRunning = true;
                 _lastBeatInterval = 0f;
                 _prevBeatInterval = 0f;
-                st.HeartbeatCoroutine = Plugin.StaticCoroutineRunner.StartCoroutine(RunHeartbeat(st, clip));
+                _activeCoroutine = Plugin.StaticCoroutineRunner.StartCoroutine(RunHeartbeat(st, clip));
+                st.HeartbeatCoroutine = _activeCoroutine;
             }
             catch (Exception ex)
             {
@@ -80,6 +82,7 @@ namespace KeepMeAlive.Presentation.Audio
                 if (st?.HeartbeatCoroutine == null) return; // not this player's heartbeat (e.g. a remote player's death)
                 _isRunning = false;
                 Plugin.StaticCoroutineRunner.StopCoroutine(st.HeartbeatCoroutine);
+                if (ReferenceEquals(_activeCoroutine, st.HeartbeatCoroutine)) _activeCoroutine = null;
                 st.HeartbeatCoroutine = null;
                 StopActiveBeat();
             }
@@ -89,7 +92,25 @@ namespace KeepMeAlive.Presentation.Audio
             }
         }
 
+        public static void Clear()
         //====================[ Coroutine ]====================
+        {
+            try
+            {
+                _isRunning = false;
+                if (_activeCoroutine != null && Plugin.StaticCoroutineRunner != null)
+                {
+                    Plugin.StaticCoroutineRunner.StopCoroutine(_activeCoroutine);
+                }
+                _activeCoroutine = null;
+                StopActiveBeat();
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[HeartbeatEffect] Clear error: {ex.Message}");
+            }
+        }
+
         private static IEnumerator RunHeartbeat(RMPlayer st, AudioClip clip)
         {
             float critical = SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds;
@@ -122,6 +143,7 @@ namespace KeepMeAlive.Presentation.Audio
             }
 
             _isRunning = false;
+            _activeCoroutine = null;
             st.HeartbeatCoroutine = null;
             StopActiveBeat();
         }

@@ -22,7 +22,7 @@ namespace KeepMeAlive.Presentation.HUD
         //====================[ Types ]====================
         internal enum StatusKind { Bleeding, BeingRevived, Reviving, Invulnerable }
         internal enum HoldKind { SelfRevive, GiveUp, ReviveTeammate, Heal }
-        internal enum StripState { Hidden, Available, NoLives, NeedsStim, SelfReviveOff }
+        internal enum StripState { Hidden, Available, NoLives, NeedsStim, NeedsDefib, SelfReviveOff }
         internal enum SpectateHint { Hidden, Available, Active }
         internal enum WheelStrip { Hidden, Categories, Items }
 
@@ -106,9 +106,15 @@ namespace KeepMeAlive.Presentation.HUD
         private static int _stripCost;
         // Set while the local player drags a body: the strip is then the one revive prompt, on the game's interact key.
         private static string _stripInteractKey;
-        // Looking at a downed teammate: "Tap [key] Drag  Hold [key] Revive" (whichever are possible), while no other strip shows.
+        // Looking at a downed teammate: "Tap [key] Drag  Hold [key] Revive  [inventory key] Loot" (whichever are offered), while
+        // no other strip shows.
+        // The revive carries the same chips as the strip: its cost, or why it can't be done.
         private static string _hintKey;
-        private static bool _hintDrag, _hintRevive;
+        private static bool _hintDrag;
+        private static StripState _hintRevive = StripState.Hidden;
+        private static int _hintCost;
+        // "[inventory key] Loot" on the same hint, independent of the interact entries.
+        private static string _hintLootKey;
         private static SpectateHint _spectateHint = SpectateHint.Hidden;
         private static string _spectateName;
         // While the team-heal wheel is open the strip is its controls only: which ring it shows.
@@ -234,14 +240,27 @@ namespace KeepMeAlive.Presentation.HUD
             global::Comfort.Common.Singleton<global::EFT.Settings.SettingsManager>.Instance?.Control.Settings
                 .GetKeyName(global::EFT.InputSystem.EGameKey.Interact) ?? "F";
 
-        internal static void SetLookHint(bool drag, bool revive)
+        // The key the game has bound to the inventory.
+        internal static string InventoryKeyName() =>
+            global::Comfort.Common.Singleton<global::EFT.Settings.SettingsManager>.Instance?.Control.Settings
+                .GetKeyName(global::EFT.InputSystem.EGameKey.Inventory) ?? "Tab";
+
+        internal static void SetLookHint(bool drag, StripState revive, int cost, bool loot)
         {
-            _hintKey = drag || revive ? InteractKeyName() : null;
+            _hintKey = drag || revive != StripState.Hidden ? InteractKeyName() : null;
             _hintDrag = drag;
             _hintRevive = revive;
+            _hintCost = cost;
+            _hintLootKey = loot ? InventoryKeyName() : null;
         }
 
-        internal static void ClearLookHint() => _hintKey = null;
+        internal static void ClearLookHint()
+        {
+            _hintKey = null;
+            _hintLootKey = null;
+        }
+
+        private static bool HasLookHint => _hintKey != null || _hintLootKey != null;
 
         // Drops the strip only if it is the dragger's, so a downed player's own strip is never touched.
         internal static void ClearDraggerStrip()
@@ -267,6 +286,7 @@ namespace KeepMeAlive.Presentation.HUD
             _stripState = StripState.Hidden;
             _stripInteractKey = null;
             _hintKey = null;
+            _hintLootKey = null;
             _stripKey = null;
         }
 
@@ -276,7 +296,7 @@ namespace KeepMeAlive.Presentation.HUD
         {
             try
             {
-                if (Plugin.IAmDedicatedClient) return;
+                if (FikaBridge.IsHeadless()) return;
 
                 _inputBlocked = blocked;
                 if (!blocked)
@@ -593,7 +613,7 @@ namespace KeepMeAlive.Presentation.HUD
             }
 
             bool hiddenByStatus = _overlayKind == StatusKind.BeingRevived || _overlayKind == StatusKind.Reviving;
-            bool hint = _stripState == StripState.Hidden && _hintKey != null;
+            bool hint = _stripState == StripState.Hidden && HasLookHint;
             if ((_stripState == StripState.Hidden && !hint) || hiddenByStatus)
             {
                 _strip.SetActive(false);
@@ -605,7 +625,7 @@ namespace KeepMeAlive.Presentation.HUD
 
             var selfKey = KeepMeAliveSettings.SELF_REVIVAL_KEY.Value;
             var giveUpKey = KeepMeAliveSettings.GIVE_UP_KEY.Value;
-            string key = $"{_stripState}|{_stripCost}|{_stripInteractKey}|{hint}|{_hintKey}|{_hintDrag}|{_hintRevive}|{selfKey}|{giveUpKey}|{_spectateHint}|{_spectateHeadcam}|{_spectateNightVision}";
+            string key = $"{_stripState}|{_stripCost}|{_stripInteractKey}|{hint}|{_hintKey}|{_hintDrag}|{_hintRevive}|{_hintCost}|{_hintLootKey}|{selfKey}|{giveUpKey}|{_spectateHint}|{_spectateHeadcam}|{_spectateNightVision}";
             if (key != _stripKey)
             {
                 _stripKey = key;
@@ -633,11 +653,21 @@ namespace KeepMeAlive.Presentation.HUD
         {
             var sb = new System.Text.StringBuilder(200);
 
-            if (_stripState == StripState.Hidden && _hintKey != null)
+            if (_stripState == StripState.Hidden && HasLookHint)
             {
+                bool revive = _hintRevive != StripState.Hidden;
                 if (_hintDrag) HintItem(sb, PlayerFacingMessages.HudLabels.Tap, PlayerFacingMessages.HudLabels.Drag);
-                if (_hintDrag && _hintRevive) sb.Append("<space=1.8em>");
-                if (_hintRevive) HintItem(sb, PlayerFacingMessages.HudLabels.Hold, PlayerFacingMessages.HudLabels.Revive);
+                if (_hintDrag && revive) sb.Append("<space=1.8em>");
+                if (revive)
+                {
+                    HintItem(sb, PlayerFacingMessages.HudLabels.Hold, PlayerFacingMessages.HudLabels.Revive);
+                    StripChips(sb, _hintRevive, _hintCost);
+                }
+                if (_hintLootKey != null)
+                {
+                    if (_hintDrag || revive) sb.Append("<space=1.8em>");
+                    KeyItem(sb, _hintLootKey, PlayerFacingMessages.HudLabels.Loot);
+                }
                 return sb.ToString();
             }
 
@@ -645,7 +675,7 @@ namespace KeepMeAlive.Presentation.HUD
             {
                 sb.Append("<color=").Append(GreyTag).Append("><size=80%>").Append(PlayerFacingMessages.HudLabels.Hold).Append("</size></color> ");
                 KeyItem(sb, _stripInteractKey, PlayerFacingMessages.HudLabels.Revive);
-                StripChips(sb);
+                StripChips(sb, _stripState, _stripCost);
                 return sb.ToString();
             }
 
@@ -679,7 +709,7 @@ namespace KeepMeAlive.Presentation.HUD
                     break;
                 default:
                     StripItem(sb, true, selfKey, PlayerFacingMessages.HudLabels.SelfRevive);
-                    StripChips(sb);
+                    StripChips(sb, _stripState, _stripCost);
                     break;
             }
 
@@ -701,19 +731,23 @@ namespace KeepMeAlive.Presentation.HUD
             KeyItem(sb, _hintKey, label);
         }
 
-        // What the revive on the strip costs, or why it can't be done.
-        private static void StripChips(System.Text.StringBuilder sb)
+        // What the revive costs, or why it can't be done. On the dragger's strip and the look hint the lives are the downed
+        // teammate's (a revive never costs the reviver any).
+        private static void StripChips(System.Text.StringBuilder sb, StripState state, int cost)
         {
-            switch (_stripState)
+            switch (state)
             {
-                case StripState.Available when _stripCost > 0:
-                    Chip(sb, PlayerFacingMessages.HudLabels.Cost(_stripCost), GreyTag);
+                case StripState.Available when cost > 0:
+                    Chip(sb, PlayerFacingMessages.HudLabels.Cost(cost), GreyTag);
                     break;
                 case StripState.NoLives:
-                    Chip(sb, PlayerFacingMessages.HudLabels.NeedsLives(_stripCost), Red.ToHex());
+                    Chip(sb, PlayerFacingMessages.HudLabels.NotEnoughLives, Red.ToHex());
                     break;
                 case StripState.NeedsStim:
                     Chip(sb, PlayerFacingMessages.HudLabels.NeedsStim, Red.ToHex());
+                    break;
+                case StripState.NeedsDefib:
+                    Chip(sb, PlayerFacingMessages.HudLabels.NeedsDefib, Red.ToHex());
                     break;
             }
         }
@@ -773,7 +807,7 @@ namespace KeepMeAlive.Presentation.HUD
         //====================[ Build ]====================
         private static bool EnsureBuilt()
         {
-            if (Plugin.IAmDedicatedClient) return false;
+            if (FikaBridge.IsHeadless()) return false;
             if (_root != null) return true;
 
             try

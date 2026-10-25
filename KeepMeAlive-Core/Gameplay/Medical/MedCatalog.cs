@@ -58,7 +58,7 @@ namespace KeepMeAlive.Gameplay.Medical
                 foreach (var item in items)
                 {
                     if (item is not Meds && item is not FoodDrink) continue;
-                    if (IsEmpty(item) || ModUtils.IsItemInUse(healer, item) || (excluded != null && excluded(item))) continue;
+                    if (IsEmpty(item) || InventoryUtils.IsItemInUse(healer, item) || (excluded != null && excluded(item))) continue;
 
                     if (byTemplate.TryGetValue(item.StringTemplateId, out var offer))
                     {
@@ -113,31 +113,11 @@ namespace KeepMeAlive.Gameplay.Medical
 
         //====================[ Item State ]====================
         // An item by instance id anywhere in a player's inventory; works for local and observed players.
-        public static Item Find(Player player, string itemId)
-        {
-            try
-            {
-                var items = player?.Inventory?.AllRealPlayerItems;
-                if (items == null || string.IsNullOrEmpty(itemId)) return null;
-                foreach (var item in items)
-                {
-                    if (item?.Id == itemId) return item;
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogError($"[MedCatalog] Find error: {ex.Message}");
-            }
-            return null;
-        }
+        public static Item Find(Player player, string itemId) =>
+            InventoryUtils.FindItemById(player, itemId);
 
-        public static bool IsEmpty(Item item)
-        {
-            var kit = item.GetItemComponent<MedKitComponent>();
-            if (kit != null && kit.HpResource < float.Epsilon) return true;
-            var food = item.GetItemComponent<FoodDrinkComponent>();
-            return food != null && food.HpPercent < float.Epsilon;
-        }
+        public static bool IsEmpty(Item item) =>
+            InventoryUtils.IsMedOrFoodDepleted(item);
 
         public static MedAmount Amount(Item item, List<MedCategory> categories)
         {

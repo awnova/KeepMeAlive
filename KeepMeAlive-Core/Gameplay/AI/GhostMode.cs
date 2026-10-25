@@ -66,7 +66,7 @@ namespace KeepMeAlive.Gameplay.AI
 
                 if (sainAssembly == null)
                 {
-                    Plugin.LogSource.LogInfo("[GhostMode] SAIN assembly not found — SAIN integration disabled");
+                    Plugin.LogSource.LogInfo("[GhostMode] SAIN assembly not found - SAIN integration disabled");
                     _sainAvailable = false;
                     return;
                 }
@@ -167,11 +167,11 @@ namespace KeepMeAlive.Gameplay.AI
 
                 if (!IsHost)
                 {
-                    RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — CLIENT, flag set only");
+                    RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) - CLIENT, flag set only");
                     return;
                 }
 
-                RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) — HOST");
+                RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) - HOST");
 
                 int removedBots = 0;
                 int removedGroups = 0;
@@ -198,6 +198,14 @@ namespace KeepMeAlive.Gameplay.AI
                     {
                         Plugin.LogSource.LogWarning($"[GhostMode] g.RemoveEnemy error: {ex.Message}");
                     }
+                }
+
+                // SAIN removal runs BEFORE vanilla CalcGoal so SAIN's CalcGoal patches cannot re-select the downed player.
+                int sainRemoved = 0;
+                sainRemoved += RemoveFromSAIN(playerId);
+                if (sainRemoved > 0)
+                {
+                    RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
                 }
 
                 // Remove the player from BotEnemiesController, clear GoalEnemy/LastEnemy, and stop shooting systems.
@@ -259,7 +267,7 @@ namespace KeepMeAlive.Gameplay.AI
                 RevivalDebugLog.LogDebug($"[GhostMode] Enter done (HOST): removed from {removedBots} bot controllers, {removedGroups} groups, cleared {clearedGoals} GoalEnemy refs");
 
                 // SAIN removal (runs AFTER vanilla so SAIN can clean up any remaining EnemyInfo refs)
-                int sainRemoved = RemoveFromSAIN(playerId);
+                sainRemoved += RemoveFromSAIN(playerId);
                 if (sainRemoved > 0)
                 {
                     RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
@@ -275,7 +283,7 @@ namespace KeepMeAlive.Gameplay.AI
         {
             try
             {
-                var p = ModUtils.GetPlayerById(playerId);
+                var p = PlayerUtils.GetPlayerById(playerId);
                 if (p != null)
                 {
                     EnterGhostMode(p);
@@ -356,7 +364,7 @@ namespace KeepMeAlive.Gameplay.AI
         {
             try
             {
-                var p = ModUtils.GetPlayerById(playerId);
+                var p = PlayerUtils.GetPlayerById(playerId);
                 if (p != null)
                 {
                     ExitGhostMode(p);

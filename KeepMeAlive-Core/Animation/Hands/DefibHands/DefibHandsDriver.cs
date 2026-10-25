@@ -38,6 +38,8 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         // MaxPairShift to preserve the track's spacing while keeping a bend.
         private const float MaxReachShare = 0.90f;
         private const float MaxPairShift = 0.12f;
+        // The source action's frame the shock sound starts on, inside the shock (ChargeEnd..ShockEnd).
+        private const int ShockSoundFrame = 114;
 
         private enum Phase { Settling, Playing, PuttingAway, BlendingOut, Done }
 
@@ -67,6 +69,12 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         private float _pullStart, _chargeStart, _shockStart;
         private float _rate, _chargeRate;
         private int _rubCycles;
+
+        // Sounds (DefibSounds): the charge is timed to end as the shock starts, the shock sound plays on ShockSoundFrame.
+        private float _chargeSoundAt, _shockSoundAt;
+        private bool _chargePlayed, _shockPlayed;
+        private BetterSource _chargeSource;
+        private float _chargeSourceEnd;
 
         // The track's hands this frame.
         private DefibHandsTrack.Hand _left, _right;
@@ -156,6 +164,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
 
                 case Phase.Playing:
                     _weight = Mathf.Clamp01((now - _phaseStart) / BlendInSeconds);
+                    PlaySounds(now);
                     if (now >= _holdEnd) Enter(Phase.PuttingAway);
                     break;
 
@@ -190,11 +199,14 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             HandTrace.Log($"defib {_player.ProfileId}: {_phase} -> {phase} after {Time.time - _phaseStart:F2}s (weight {_weight:F2}, frame {_frame:F0})");
             _phase = phase;
             _phaseStart = Time.time;
+            // Cancelled or cut short before the shock: the charge stops with the hands.
+            if (phase == Phase.BlendingOut || phase == Phase.Done) StopCharge();
             if (phase == Phase.Done) Dispose();
         }
 
         public void Dispose()
         {
+            StopCharge();
             FullScaleArms.Want(_player, this, false);
             _weight = 0f;
             _paddles?.Destroy();
@@ -203,8 +215,8 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
 
         //====================[ Timeline ]====================
         // Fits the sequence into what is left of the hold: pull out, n rub cycles and the tail of the charge, then the
-        // shock, ending on the hold's end. The rub cycles are stretched or squeezed a little to fill it exactly; with
-        // no room for one, the pull-out, tail and shock play faster instead.
+        // shock, ending on the hold's end. The rub cycles are stretched or squeezed to fill it exactly (at least one, so a
+        // short fill rubs faster); with no room at all, the pull-out, tail and shock play faster instead.
         private void Schedule(float now)
         {
             float pull = _track.Seconds(_track.FirstFrame, _track.RubStart);
@@ -215,10 +227,10 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             float remaining = _holdEnd - now;
             float fill = remaining - fixedPart;
 
-            if (fill >= 0f)
+            if (fill > 0f)
             {
                 _rate = 1f;
-                _rubCycles = Mathf.RoundToInt(fill / cycle);
+                _rubCycles = Mathf.Max(1, Mathf.RoundToInt(fill / cycle));
                 _chargeRate = (_rubCycles * cycle + tail) / (fill + tail);
             }
             else
@@ -231,7 +243,37 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             _pullStart = now;
             _chargeStart = _pullStart + pull / _rate;
             _shockStart = _chargeStart + (_rubCycles * cycle + tail) / _chargeRate;
+            // Not before the paddles are out; then it is cut when the shock sounds.
+            _chargeSoundAt = Mathf.Max(_pullStart, _shockStart - DefibSounds.ChargeSeconds);
+            _shockSoundAt = _shockStart + _track.Seconds(_track.ChargeEnd, ShockSoundFrame) / _rate;
         }
+
+        // Starts each sound once its moment comes; the charge is cut if it would run into the shock.
+        private void PlaySounds(float now)
+        {
+            if (!_chargePlayed && now >= _chargeSoundAt && now < _shockStart)
+            {
+                _chargePlayed = true;
+                _chargeSource = DefibSounds.PlayCharge(SoundPosition());
+                _chargeSourceEnd = now + DefibSounds.ChargeSeconds;
+            }
+            if (!_shockPlayed && now >= _shockSoundAt)
+            {
+                _shockPlayed = true;
+                StopCharge();
+                DefibSounds.PlayShock(SoundPosition());
+            }
+        }
+
+        // Stops the charge if it is still playing. A finished one is left alone: the game hands its source to other sounds.
+        private void StopCharge()
+        {
+            if (_chargeSource != null && Time.time < _chargeSourceEnd - 0.05f) _chargeSource.Stop(0.05f);
+            _chargeSource = null;
+        }
+
+        // Between the reviver's palms, where the paddles are.
+        private Vector3 SoundPosition() => (_palms[0].position + _palms[1].position) * 0.5f;
 
         // The source action's frame at a moment of the sequence.
         private float FrameAt(float now)
@@ -322,7 +364,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             float length = arm.UpperLength + arm.ForeLength;
             float reach = (wrist - shoulder).magnitude;
             Vector3 look = _camera.forward;
-            var ribcage = _player.PlayerBones.Ribcage.Original;
+            var ribcage = PlayerUtils.GetRibcage(_player);
             HandTrace.Log($"defib {_player.ProfileId} {(hand == 0 ? "L" : "R")} {_phase} frame {_frame:F0} weight {_weight:F2} | " +
                 $"scale {ribcage.localScale.z:F2} cam {HandTrace.V(origin)} ribcage {HandTrace.V(ribcage.position)} look pitch {-Mathf.Asin(Mathf.Clamp(look.y, -1f, 1f)) * Mathf.Rad2Deg:F0}deg | " +
                 $"shoulder {HandTrace.V(shoulder)} (from cam {HandTrace.V(Quaternion.Inverse(frame) * (shoulder - origin))}) | " +

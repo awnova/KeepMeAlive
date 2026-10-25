@@ -16,7 +16,7 @@ namespace KeepMeAlive.Gameplay.Revival
     // packet handlers (OnRevivedPacket / resync) for remote-player / edge-case paths.
     internal static class PostReviveEffects
     {
-        // Fractures only ever attach to limbs â€” Head/Chest/Stomach never fracture in EFT.
+        // Fractures only ever attach to limbs - Head/Chest/Stomach never fracture in EFT.
         private static readonly EBodyPart[] FractureBodyParts =
         {
             EBodyPart.LeftArm, EBodyPart.RightArm,
@@ -77,9 +77,8 @@ namespace KeepMeAlive.Gameplay.Revival
             var hc = player.ActiveHealthController;
             if (hc == null) return;
 
-            foreach (EBodyPart part in Enum.GetValues(typeof(EBodyPart)))
+            foreach (EBodyPart part in HealthUtils.RealBodyParts)
             {
-                if (part == EBodyPart.Common) continue;
                 // DO NOT check IsBodyPartDestroyed here! 
                 // Vitals like Stomach might be saved at exactly 1 HP by the downed state,
                 // so they are not formally "destroyed" but still need to be restored to their target percentages.
@@ -106,14 +105,14 @@ namespace KeepMeAlive.Gameplay.Revival
 
                 if (isDestroyed)
                 {
-                    // Part was destroyed and just fully restored â€” set to the configured percentage
+                    // Part was destroyed and just fully restored - set to the configured percentage
                     // (FullRestoreBodyPart sets it to max, so I reduce it to the target).
                     if (Math.Abs(delta) > 0.01f)
                         hc.ChangeHealth(part, delta, default);
                 }
                 else if (delta > 0.01f)
                 {
-                    // Part was not destroyed â€” only increase health up to the target percentage.
+                    // Part was not destroyed - only increase health up to the target percentage.
                     hc.ChangeHealth(part, delta, default);
                 }
 
@@ -191,15 +190,12 @@ namespace KeepMeAlive.Gameplay.Revival
             var hc = player.ActiveHealthController;
             if (hc == null) return;
 
+            if (cfg.ApplyContusionOnRevive)
+                HealthUtils.ApplyContusionSilent(player, cfg.ContusionDurationSeconds);
+
             // Post-revive invulnerability is already active here.
             GodMode.RunWithDamageEnabled(player, () =>
             {
-                if (cfg.ApplyContusionOnRevive && cfg.ContusionDurationSeconds > 0f)
-                {
-                    float dur = cfg.ContusionDurationSeconds;
-                    TinnitusScope.Run(() => hc.DoContusion(dur, 1f));
-                }
-
                 if (cfg.ApplyPainOnRevive && cfg.PainDurationSeconds > 0f)
                 {
                     // Applied to head; full-body sway/hands shake at default strength.

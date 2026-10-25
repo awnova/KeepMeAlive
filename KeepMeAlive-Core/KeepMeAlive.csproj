@@ -13,23 +13,9 @@
     <ManagedDir>$(SPTBaseDir)\EscapeFromTarkov_Data\Managed\</ManagedDir>
   </PropertyGroup>
 
+  <!-- Everything the mod loads at runtime, embedded in the DLL. Manifest name: KeepMeAlive.Resources.<sub.folders.>file. -->
   <ItemGroup>
-    <EmbeddedResource Include="Resources\heartbeat_loop.wav" />
-    <EmbeddedResource Include="Resources\revive_item_cooldown.png" />
-    <EmbeddedResource Include="Resources\downed_fall.json" />
-    <EmbeddedResource Include="Resources\downed_crouch_fall.json" />
-    <EmbeddedResource Include="Resources\downed_loop.json" />
-    <EmbeddedResource Include="Resources\downed_getup.json" />
-    <EmbeddedResource Include="Resources\downed_settle.json" />
-    <EmbeddedResource Include="Resources\self_stim.json" />
-    <EmbeddedResource Include="Resources\self_stim_hand.json" />
-    <EmbeddedResource Include="Resources\defib_hands.json" />
-    <EmbeddedResource Include="Resources\defib_paddles.json" />
-    <EmbeddedResource Include="Resources\drag_stim_jab.json" />
-    <EmbeddedResource Include="Resources\drag_hold_grip.json" />
-    <EmbeddedResource Include="Resources\stim_pen.json" />
-    <EmbeddedResource Include="Resources\stim_pen.bundle" />
-    <EmbeddedResource Include="Resources\defib_paddles.bundle" />
+    <EmbeddedResource Include="Resources\**\*.wav;Resources\**\*.png;Resources\**\*.json;Resources\**\*.bundle" />
   </ItemGroup>
 
   <ItemGroup>
@@ -77,7 +63,59 @@
     <RuntimePluginDir>$(SPTBaseDir)\BepInEx\plugins</RuntimePluginDir>
   </PropertyGroup>
 
-  <Target Name="DeployPlugin" AfterTargets="Build">
+  <!-- Fails the build (so nothing is deployed) when the built DLL is missing an embedded resource: a stale obj/ DLL from a
+       partial build (-t:Compile) has none, and the props, sounds and icons then silently vanish in game. Also warns about a
+       file in Resources that is not embedded (an extension the item above does not take). -->
+  <UsingTask TaskName="KeepMeAlive_CheckManifestResources" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Assembly ParameterType="System.String" Required="true" />
+      <Expected ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        // A manifest resource's name is in the metadata string heap as UTF-8 (C# string literals are UTF-16, so they do not
+        // match), and its bytes are in the file: every name must be there, and the file must be at least as big as them all.
+        byte[] dll = File.ReadAllBytes(Assembly);
+        long total = 0;
+        int missing = 0;
+        foreach (var item in Expected)
+        {
+            total += new FileInfo(item.GetMetadata("FullPath")).Length;
+            string name = item.GetMetadata("ManifestResourceName");
+            byte[] needle = Encoding.UTF8.GetBytes(name + "\0");
+            bool found = false;
+            for (int i = 0; !found && i <= dll.Length - needle.Length; i++)
+            {
+                if (dll[i] != needle[0]) continue;
+                int j = 1;
+                while (j < needle.Length && dll[i + j] == needle[j]) j++;
+                found = j == needle.Length;
+            }
+            if (!found)
+            {
+                missing++;
+                Log.LogError("KeepMeAlive.dll is missing embedded resource " + name + " (stale obj/? delete obj/ and bin/ and rebuild)");
+            }
+        }
+        if (missing == 0 && dll.Length < total)
+            Log.LogError("KeepMeAlive.dll (" + dll.Length + " bytes) is smaller than its embedded resources (" + total + " bytes): stale obj/? delete obj/ and bin/ and rebuild");
+        else if (missing == 0)
+            Log.LogMessage(MessageImportance.High, "KeepMeAlive.dll: all " + Expected.Length + " embedded resources present (" + dll.Length / 1024 + " KB)");
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="VerifyEmbeddedResources" AfterTargets="Build">
+    <ItemGroup>
+      <_KmaResourceFile Include="Resources\**\*" Exclude="@(EmbeddedResource)" />
+    </ItemGroup>
+    <Warning Condition=" '@(_KmaResourceFile)' != '' " Text="Not embedded (unhandled extension): @(_KmaResourceFile)" />
+    <KeepMeAlive_CheckManifestResources Assembly="$(TargetPath)" Expected="@(EmbeddedResource)" />
+  </Target>
+
+  <Target Name="DeployPlugin" AfterTargets="Build" DependsOnTargets="VerifyEmbeddedResources">
     <MakeDir Directories="$(BuildPluginDir)" />
     <MakeDir Directories="$(RuntimePluginDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BuildPluginDir)" SkipUnchangedFiles="false" />

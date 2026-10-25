@@ -84,6 +84,7 @@ namespace KeepMeAlive.Gameplay.Medical
         // A movement or lean key was down at the last dispatch (or when the wheel opened, until it is let go).
         private static bool _moveHeld;
         private static int _openedFrame;
+        private static int _lastClickFrame = -1;
         private static float _nextRefresh;
         private static float _peakTurn;
         private static TeamHealWheelView _view;
@@ -109,6 +110,7 @@ namespace KeepMeAlive.Gameplay.Medical
                 _healer = healer;
                 _patient = patient;
                 _openedFrame = Time.frameCount;
+                _lastClickFrame = -1;
                 _moveHeld = true;
                 _peakTurn = 0f;
                 ShowLevel(Level.Categories);
@@ -162,12 +164,22 @@ namespace KeepMeAlive.Gameplay.Medical
             switch (command)
             {
                 case ECommand.ToggleShooting:
-                    RevivalDebugLog.LogDebug($"[TeamHealWheel] select (slot {_highlight}) at frame {Time.frameCount}");
-                    Select();
+                case ECommand.TryHighThrow:
+                    if (_lastClickFrame != Time.frameCount)
+                    {
+                        _lastClickFrame = Time.frameCount;
+                        RevivalDebugLog.LogDebug($"[TeamHealWheel] select (slot {_highlight}) at frame {Time.frameCount}");
+                        Select();
+                    }
                     return true;
                 case ECommand.ToggleAlternativeShooting:
-                    RevivalDebugLog.LogDebug($"[TeamHealWheel] back at frame {Time.frameCount}");
-                    Back();
+                case ECommand.TryLowThrow:
+                    if (_lastClickFrame != Time.frameCount)
+                    {
+                        _lastClickFrame = Time.frameCount;
+                        RevivalDebugLog.LogDebug($"[TeamHealWheel] back at frame {Time.frameCount}");
+                        Back();
+                    }
                     return true;
                 case ECommand.ScrollNext:
                 case ECommand.ScrollPrevious:
@@ -192,7 +204,7 @@ namespace KeepMeAlive.Gameplay.Medical
             }
             _moveHeld = moving;
 
-            var turn = new Vector2(axes[(int)EAxis.TurnX], axes[(int)EAxis.TurnY]);
+            var turn = new Vector2(axes[(int)EAxis.TurnX], -axes[(int)EAxis.TurnY]);
             _peakTurn = Mathf.Max(_peakTurn, turn.magnitude);
             _stick = Vector2.ClampMagnitude(_stick + turn * StickGain, 1f);
             UpdateHighlight();
@@ -236,8 +248,8 @@ namespace KeepMeAlive.Gameplay.Medical
         private static string CloseReason()
         {
             if (_view == null || !_view.IsAlive) return "view gone";
-            if (_healer == null || _healer.HealthController == null || !_healer.HealthController.IsAlive) return "healer gone or dead";
-            if (_patient == null || _patient.HealthController == null || !_patient.HealthController.IsAlive) return "patient gone or dead";
+            if (!PlayerUtils.IsAlive(_healer)) return "healer gone or dead";
+            if (!PlayerUtils.IsAlive(_patient)) return "patient gone or dead";
             if (RMSession.IsPlayerCritical(_healer.ProfileId)) return "healer downed";
             if (RMSession.IsPlayerCritical(_patient.ProfileId)) return "patient downed";
             float distanceSq = (_healer.Position - _patient.Position).sqrMagnitude;
@@ -247,11 +259,21 @@ namespace KeepMeAlive.Gameplay.Medical
             return null;
         }
 
-        // The stick's direction picks the slot; inside the dead zone nothing.
+        // The stick's direction picks the slot; inside the dead zone nothing (except a single-item ring, which covers 360°).
         private static void UpdateHighlight()
         {
             int n = _slots.Count;
-            if (n == 0 || _stick.magnitude < DeadZone)
+            if (n == 0)
+            {
+                _highlight = -1;
+                return;
+            }
+            if (n == 1)
+            {
+                _highlight = 0;
+                return;
+            }
+            if (_stick.magnitude < DeadZone)
             {
                 _highlight = -1;
                 return;

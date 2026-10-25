@@ -1,5 +1,6 @@
+using Comfort.Common;
 //====================[ Imports ]====================
-using Fika.Core.Main.Utils;
+using EFT;
 using Fika.Core.Modding;
 using Fika.Core.Modding.Events;
 
@@ -41,13 +42,17 @@ namespace KeepMeAlive.Networking.Fika
         //====================[ Raid Started — Local Setup + Attach Body Interactables ]====================
         private static void OnRaidStarted(FikaRaidStartedEvent e)
         {
+            // Usually the first of the two start events (the countdown ends before the world's async setup does), so the
+            // clean slate has to come before this raid's setup below, not after it.
+            if (Singleton<GameWorld>.Instantiated) ResetOncePerRaid(Singleton<GameWorld>.Instance, "raid-started");
+
             SyncedServerConfigStore.EnsureLoaded("raid-started");
-            RevivalDebugLog.LogDebug($"[OnRaidStarted] IsScav={FikaBackendUtils.IsScav}");
+            RevivalDebugLog.LogDebug($"[OnRaidStarted] IsScav={FikaBridge.IsScav()}");
 
             // A headless host has no human at the keyboard to revive/heal/loot anyone.
-            if (FikaBackendUtils.IsHeadless) return;
+            if (FikaBridge.IsHeadless()) return;
 
-            var localPlayer = ModUtils.GetYourPlayer();
+            var localPlayer = PlayerUtils.GetYourPlayer();
             if (localPlayer != null)
             {
                 RaidStartupTasks.OnLocalRaidStart(localPlayer);
@@ -56,18 +61,28 @@ namespace KeepMeAlive.Networking.Fika
             BodyInteractableRuntime.AttachToRemoteHumans();
         }
 
-        // GameWorldStartedEvent fires before players spawn; clearing here guarantees a clean
-        // slate even if the previous raid ended without FikaGameEndedEvent (crash/disconnect).
-        private static void OnGameWorldStarted(GameWorldStartedEvent e)
+        private static void OnGameWorldStarted(GameWorldStartedEvent e) => ResetOncePerRaid(e.GameWorld, "game-world-started");
+
+        // A clean slate at raid start, even if the previous raid ended without FikaGameEndedEvent (crash/disconnect).
+        // Fika raises FikaRaidStartedEvent (end of the deploy countdown) and GameWorldStartedEvent (end of the world's
+        // async setup) from separate paths, in either order; whichever comes first resets, once per game world. Resetting
+        // on the later one would wipe what OnRaidStarted just set up (the lives from the server, the body interactables).
+        private static GameWorld _resetFor;
+
+        private static void ResetOncePerRaid(GameWorld world, string reason)
         {
+            if (world == null || ReferenceEquals(world, _resetFor)) return;
+            _resetFor = world;
             DownedStateController.IsRaidEnding = false;
-            DownedStateController.ResetForRaidBoundary("game-world-started");
+            DownedStateController.ResetForRaidBoundary(reason);
         }
 
         private static void OnGameEnded(FikaGameEndedEvent e)
         {
             DownedStateController.IsRaidEnding = true;
             DownedStateController.ResetForRaidBoundary("game-ended");
+            // The next raid's world is a new object anyway; this just stops holding the old one.
+            _resetFor = null;
         }
     }
 }

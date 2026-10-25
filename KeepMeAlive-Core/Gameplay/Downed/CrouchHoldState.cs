@@ -145,7 +145,7 @@ namespace KeepMeAlive.Gameplay.Downed
 
             float yawStep = Mathf.Min(Mathf.Abs(yawGap), Mathf.Max(MinTurnSpeed, TurnGain * Mathf.Abs(yawGap)) * deltaTime) * Mathf.Sign(yawGap);
             float pitchStep = Mathf.Min(Mathf.Abs(pitchGap), Mathf.Max(MinTurnSpeed, TurnGain * Mathf.Abs(pitchGap)) * deltaTime) * Mathf.Sign(pitchGap);
-            if (mc.IsInPronePose && !mc.IsAbleToRotateProne(Vector3.zero, yawStep, Quaternion.Euler(0f, 2f * yawStep, 0f), _self.PlayerBones.Spine1, out _))
+            if (mc.IsInPronePose && !PlayerUtils.CanRotateProne(mc, yawStep, PlayerUtils.GetSpine1(_self)))
                 yawStep = 0f;
 
             float yaw = look.x + yawStep;
@@ -155,7 +155,7 @@ namespace KeepMeAlive.Gameplay.Downed
             // The clamp first (it would pull the look back to the old cone), then the look, then the body under it.
             mc.SetRotationLimit(new Vector2(yaw - YawHalfRange, yaw + YawHalfRange), new Vector2(pitch - PitchDown, pitch + PitchUp));
             mc.Rotation = new Vector2(yaw, pitch);
-            if (!Mathf.Approximately(yawStep, 0f)) mc.ApplyRotation(Quaternion.AngleAxis(yawStep, Vector3.up) * mc.TransformRotation);
+            if (!Mathf.Approximately(yawStep, 0f)) PlayerUtils.RotateBodyYaw(mc, yawStep);
         }
 
         // Leaves the state first, so the callback runs with the player already out of the hold.

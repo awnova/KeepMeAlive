@@ -24,7 +24,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance != null && __instance.IsYourPlayer && DownedDragController.IsPickupLocked)
+                if (PlayerUtils.IsLocalPlayer(__instance) && DownedDragController.IsPickupLocked)
                     direction = Vector2.zero;
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DragPickupMove] error: {ex.Message}"); }
@@ -68,7 +68,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance?.Player == null || !Blocked.Contains(command) || !DownedDragController.IsPickupLocked) return true;
+                if (!PlayerUtils.TryGetLocalOwnerPlayer(__instance, out _) || !Blocked.Contains(command) || !DownedDragController.IsPickupLocked) return true;
                 __result = InputNode.ETranslateResult.BlockAll;
                 return false;
             }
@@ -120,11 +120,11 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance?.Player == null || !__instance.Player.IsYourPlayer) return;
+                if (!PlayerUtils.TryGetLocalOwnerPlayer(__instance, out var player)) return;
                 if (!LeftHand.Contains(command) || !DownedDragController.IsLocalHoldingBody) return;
                 // Only with the sidearm out: empty hands have no weapon to work (Examine there is the empty hands').
-                if (!ModUtils.HoldsFirearm(__instance.Player)) return;
-                DownedDragController.StopDrag(__instance.Player, "left-hand", notify: true);
+                if (!PlayerUtils.HoldsFirearm(player)) return;
+                DownedDragController.StopDrag(player, "left-hand", notify: true);
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DragLeftHandCommand] error: {ex.Message}"); }
         }

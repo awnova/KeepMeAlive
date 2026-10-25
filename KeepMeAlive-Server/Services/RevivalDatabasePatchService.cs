@@ -15,7 +15,7 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
     //====================[ Constants ]====================
     private const string TraderAssortItemId = "60dc0d93a66c41234a80aeff";
     private const string ItemDescription =
-        "A portable defib used to revive yourself or others from critical condition. When in critical state, hold your configured revive key to get a second chance.";
+        "A portable defib used to revive a downed teammate from critical condition. Look at a downed teammate you are not dragging and hold Support to revive them.";
 
     private static readonly string[] PocketTemplateIds =
     {

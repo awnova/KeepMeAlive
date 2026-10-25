@@ -122,12 +122,12 @@ namespace KeepMeAlive.Animation.Ragdoll
             if (Mathf.Abs(delta) < 0.1f) return;
 
             // The skeleton hangs under the root: its top bones keep their place in the world through the turn.
-            Transform skeleton = player.PlayerBones.Pelvis.Original.parent;
+            Transform skeleton = PlayerUtils.GetPelvis(player).parent;
             _keptBones.Clear();
             foreach (Transform bone in skeleton)
                 _keptBones.Add(new KeptBone { Bone = bone, Position = bone.position, Rotation = bone.rotation });
 
-            mc.ApplyRotation(Quaternion.AngleAxis(delta, Vector3.up) * mc.TransformRotation);
+            PlayerUtils.RotateBodyYaw(mc, delta);
 
             foreach (var kept in _keptBones)
                 kept.Bone.SetPositionAndRotation(kept.Position, kept.Rotation);

@@ -1,12 +1,6 @@
 
-# KeepMeAlive build script
-# Wipes the BepInEx and SPT_Runtime output folders, then builds both
-# projects (Release). Each project's PostBuild step copies its own output
-# into Build\KeepMeAlive (the package). The package's client plugin and
-# server mod are then deployed into every SPT install in $deployRoots.
-# Files are copied over the top, so the server's generated config.json in
-# each install is kept. An install that is missing (Y: not mapped) or
-# locked (server running) is skipped with a warning.
+# Builds the client and server release packages, then deploys them to each available SPT install.
+# Existing install config files are preserved; unavailable or locked paths are skipped with a warning.
 
 $ErrorActionPreference = 'Stop'
 
@@ -14,7 +8,7 @@ $repoRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $packageRoot = Join-Path $repoRoot 'Build\KeepMeAlive'
 $bepinDir    = Join-Path $packageRoot 'BepInEx'
 $sptDir      = Join-Path $packageRoot 'SPT_Runtime'
-$deployRoots = @('C:\SPT', 'Y:\SPT')
+$deployRoots = @('C:\SPT', 'Y:\SPT', 'Y:\NsmServers\Tarkov2.0Test\Host1')
 
 Set-Location $repoRoot
 

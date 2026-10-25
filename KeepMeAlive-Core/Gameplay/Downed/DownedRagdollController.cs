@@ -43,8 +43,8 @@ namespace KeepMeAlive.Gameplay.Downed
         // After a drag, whoever let go of the body declared where it is to lie (DownedDragController.ApplyDropRest). Every
         // peer's body eases onto that place (DownedPose.AnchorToRoot), and the owner's real body goes under it (a few strides
         // at most), so the revive prompt and every later get-up start from it too.
-        private const float MaxPutDownMove = 3f;
-        private const float PutDownMoveSeconds = 2f;
+        private const float MaxPutDownMove = 6f;
+        private const float PutDownMoveSeconds = 3.5f;
         private const float PutDownMoveDone = 0.03f;
 
         private sealed class PutDownMove
@@ -131,6 +131,7 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             _localFall = null;
             _putDownMove = null;
+            _knockback = null;
         }
 
         //====================[ Shared ]====================
@@ -148,7 +149,7 @@ namespace KeepMeAlive.Gameplay.Downed
             _knockback = null;
             _localFall = null;
             var fall = DownedPose.FallFor(player);
-            var pelvis = player.PlayerBones?.Pelvis?.Original;
+            var pelvis = PlayerUtils.GetPelvis(player);
             if (fall != null && pelvis != null)
             {
                 _localFall = new LocalFall
@@ -283,7 +284,7 @@ namespace KeepMeAlive.Gameplay.Downed
             var st = RMSession.GetPlayerState(playerId);
             st.IsLimp = false;
 
-            if (ModUtils.GetPlayerById(playerId) == null) return;
+            if (PlayerUtils.GetPlayerById(playerId) == null) return;
             st.GetUpYaw = yaw;
             st.GetUpTime = Time.time;
         }

@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using EFT;
 using EFT.HealthSystem;
-using EFT.Communications;
 using UnityEngine;
 
 namespace KeepMeAlive.Gameplay.Downed
@@ -34,7 +33,7 @@ namespace KeepMeAlive.Gameplay.Downed
         // Returns true to block death (enter/keep critical/invuln), false to allow death.
         public static bool ShouldBlockDeath(Player player, EDamageType damageType)
         {
-            if (player is null || player.IsAI || DownedStateController.IsRaidEnding) return false;
+            if (!PlayerUtils.IsHuman(player) || DownedStateController.IsRaidEnding) return false;
 
             if (!SyncedServerConfigStore.IsLoaded)
             {
@@ -117,16 +116,10 @@ namespace KeepMeAlive.Gameplay.Downed
             if (!allowDeath)
             {
                 Plugin.LogSource.LogInfo($"[DeathMode] Headshot death spared (roll {roll:F2}). Enter critical.");
-                NotificationManager.DisplayMessageNotification(
-                    PlayerFacingMessages.Death.HeadshotCritical,
-                    ENotificationDurationType.Default, ENotificationIconType.Alert, Color.green);
                 return false;
             }
 
             Plugin.LogSource.LogInfo($"[DeathMode] Headshot death: killed instantly (roll {roll:F2}).");
-            NotificationManager.DisplayMessageNotification(
-                PlayerFacingMessages.Death.HeadshotKilled,
-                ENotificationDurationType.Default, ENotificationIconType.Alert, Color.red);
             return true;
         }
 
@@ -136,11 +129,15 @@ namespace KeepMeAlive.Gameplay.Downed
         // the server learn the player is dead, so observers don't keep them marked as downed.
         public static void OnLocalDeathAllowed(Player player, EDamageType damageType)
         {
-            if (player is null || !player.IsYourPlayer) return;
+            if (!PlayerUtils.IsLocalPlayer(player)) return;
             Hud.HideAll();
             Hud.SetInputBlocked(false);
             if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return;
-            if (st.State == RMState.None && !st.KillOverride) return;
+            if (st.State == RMState.None && !st.KillOverride)
+            {
+                st.KillOverride = true;
+                return;
+            }
 
             try
             {
@@ -160,7 +157,7 @@ namespace KeepMeAlive.Gameplay.Downed
                     // Said while still alive so every peer hears this one (and before the reset packet).
                     DownedVoiceController.SpeakDeathLine(player, damageType, always: false);
                     RevivalAuthority.NotifyReset(id);
-                    Networking.Fika.FikaBridge.SendPlayerStateResetPacket(id, isDead: true);
+                    FikaBridge.SendPlayerStateResetPacket(id, isDead: true);
                 }
             }
             catch (Exception ex)
@@ -169,9 +166,8 @@ namespace KeepMeAlive.Gameplay.Downed
             }
         }
 
-        // Force the player to die now (end of critical bleed-out or give-up). lethalHit is the damage type of a hit
-        // that kills them outright instead (downed again during the cooldown).
-        public static void ForceBleedout(Player player, EDamageType? lethalHit = null)
+        // Force the player to die now (end of critical bleed-out or give-up).
+        public static void ForceBleedout(Player player)
         {
             if (player is null) return;
 
@@ -187,8 +183,6 @@ namespace KeepMeAlive.Gameplay.Downed
                 RMSession.SetPlayerState(id, RMState.None);
                 st.FinalizedReviveCycleId = -1;
 
-                VFX_UI.Text(Color.black, PlayerFacingMessages.Death.YouDied);
-
                 RevivalAuthority.NotifyReset(id);
 
                 // Clear ghost flag but don't re-add to enemy lists - Kill() fires BSG's death handlers to auto-cleanup.
@@ -196,13 +190,12 @@ namespace KeepMeAlive.Gameplay.Downed
                 GodMode.Disable(player);
 
                 // Said while still alive so every peer hears this one; it goes out ahead of the reset below. A bleed-out
-                // or give-up is always voiced; a hit that kills outright follows vanilla (silent for the head).
-                if (lethalHit.HasValue) DownedVoiceController.SpeakDeathLine(player, lethalHit.Value, always: false);
-                else DownedVoiceController.SpeakDeathLine(player, st.PlayerDamageType, always: true);
+                // or give-up is always voiced.
+                DownedVoiceController.SpeakDeathLine(player, st.PlayerDamageType, always: true);
 
                 // Sent before Kill() on the same reliable-ordered channel as Fika's own death sync,
                 // so observers clear the downed state before the body dies on their machine.
-                Networking.Fika.FikaBridge.SendPlayerStateResetPacket(id, isDead: true);
+                FikaBridge.SendPlayerStateResetPacket(id, isDead: true);
 
                 LastLogTime.Remove(id);
 

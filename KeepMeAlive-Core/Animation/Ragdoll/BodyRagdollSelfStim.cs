@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using EFT;
 using EFT.AssetsManager;
-using Fika.Core.Main.Utils;
 using UnityEngine;
 
 namespace KeepMeAlive.Animation.Ragdoll
@@ -33,7 +32,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         // The player's self-revive key went down: stab themselves for `holdSeconds`, turned to `yaw` (their body's) if they lie prone.
         public static void BeginSelfStim(Player player, float holdSeconds, float yaw)
         {
-            if (player == null || string.IsNullOrEmpty(player.ProfileId) || player.IsAI || FikaBackendUtils.IsHeadless) return;
+            if (!PlayerUtils.IsHuman(player) || string.IsNullOrEmpty(player.ProfileId) || FikaBridge.IsHeadless()) return;
             StimRequests[player.ProfileId] = new StimRequest { Start = Time.time, HoldSeconds = holdSeconds, Yaw = yaw };
             RevivalDebugLog.LogDebug($"[BodyRagdoll] Self-stim asked for {player.ProfileId}: hold {holdSeconds:F1}s, yaw {yaw:F0}");
         }
@@ -90,17 +89,7 @@ namespace KeepMeAlive.Animation.Ragdoll
 
             try
             {
-                // A blend left from the hand-back would fight the pose.
-                var blend = player.GetComponent<BlendOut>();
-                if (blend != null)
-                {
-                    blend.enabled = false;
-                    UnityEngine.Object.Destroy(blend);
-                }
-                session.Prone = false;
-                if (session.Rest.Count == 0) CaptureRest(player, session);
-                DetachFromEft(player, session);
-                if (session.Interactable != null) session.Interactable.SetRagdollInert(true);
+                TakeFromProne(session);
 
                 StimRequests.Remove(player.ProfileId);
                 var pool = player.GetComponent<PlayerPoolObject>();

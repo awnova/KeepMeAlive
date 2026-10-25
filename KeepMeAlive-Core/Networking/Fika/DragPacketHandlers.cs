@@ -24,8 +24,7 @@ namespace KeepMeAlive.Networking.Fika
 
         private static void OnDragHeading(DragHeadingPacket packet, NetPeer peer)
         {
-            var local = ModUtils.GetYourPlayer();
-            if (local != null && local.ProfileId == packet.draggerId) return;
+            if (PlayerUtils.IsLocalPlayer(packet.draggerId)) return;
             DragSession.OnRemoteHeading(packet.draggerId, packet.yaw);
         }
 
@@ -39,8 +38,7 @@ namespace KeepMeAlive.Networking.Fika
             if (!packet.active) DownedDragController.ExpectDropRest(packet.reviveeId, packet.draggerId, packet.declarerId);
 
             // The revivee's owner settles competing drag claims.
-            var local = ModUtils.GetYourPlayer();
-            if (local == null || local.ProfileId != packet.reviveeId) return;
+            if (!PlayerUtils.IsLocalPlayer(packet.reviveeId)) return;
 
             // A refused claim is released straight away: a release is not held back by ClaimSettleTime the way
             // a resync is, so the refused dragger and everyone who recorded them let go now.

@@ -2,8 +2,6 @@
 using System;
 using System.Collections.Generic;
 using EFT;
-using EFT.CameraControl;
-using Fika.Core.Main.Utils;
 using UnityEngine;
 
 namespace KeepMeAlive.Animation.Hands
@@ -255,7 +253,7 @@ namespace KeepMeAlive.Animation.Hands
         public static void Ensure(Player dragger, Player revivee, bool handsOn, bool revieweeRagdolled, float reachSeconds)
         {
             if (dragger == null || revivee == null) return;
-            if (FikaBackendUtils.IsHeadless) return;
+            if (FikaBridge.IsHeadless()) return;
 
             if (!Active.TryGetValue(dragger.ProfileId, out var rig) || rig._dragger != dragger || rig._revivee != revivee)
             {
@@ -279,7 +277,7 @@ namespace KeepMeAlive.Animation.Hands
             }
 
             rig._handsOn = handsOn;
-            rig._rightFree = ModUtils.HoldsFirearm(dragger);
+            rig._rightFree = PlayerUtils.HoldsFirearm(dragger);
             rig._revieweeRagdolled = revieweeRagdolled;
             rig._reachSeconds = reachSeconds;
             rig._lastEnsure = Time.time;
@@ -302,7 +300,7 @@ namespace KeepMeAlive.Animation.Hands
         // on the body, a weapon in the right hand): the hand then stays on the body. Runs on every peer, from the claim.
         public static bool BeginStim(Player dragger, float holdSeconds)
         {
-            if (dragger == null || FikaBackendUtils.IsHeadless) return false;
+            if (dragger == null || FikaBridge.IsHeadless()) return false;
             if (Active.TryGetValue(dragger.ProfileId, out var rig) && rig._dragger == dragger) return rig.StartStim(holdSeconds);
             HandTrace.Log($"stim {dragger.ProfileId}: refused, the dragger's arms are not built (no drag running on this peer)");
             return false;
@@ -607,6 +605,11 @@ namespace KeepMeAlive.Animation.Hands
                 HandTrace.Log($"stim {_draggerId}: not available (clip {(clip != null)}, right arm {(arm != null)}, hand frame {(arm != null && arm.HasHandFrame)}, dragger frame {_hasDraggerFrame})");
                 return false;
             }
+            if (!_held && _handsOn && _revivee != null && _chest != null)
+            {
+                try { TakeHold(); _held = true; }
+                catch (Exception ex) { Plugin.LogSource.LogWarning($"[DraggerArms] TakeHold for stim failed: {ex.Message}"); }
+            }
             if (!_held || _rightFree || _revivee == null || _chest == null)
             {
                 HandTrace.Log($"stim {_draggerId}: refused (hands on the body {_held}, weapon in the right hand {_rightFree})");
@@ -636,7 +639,7 @@ namespace KeepMeAlive.Animation.Hands
         {
             if (_stim == StimPhase.None) return;
             var clip = StimJabClip.Instance;
-            bool alive = _dragger.HealthController.IsAlive && _revivee.HealthController.IsAlive;
+            bool alive = PlayerUtils.IsAlive(_dragger) && PlayerUtils.IsAlive(_revivee);
             if (clip == null || !alive || _rightFree || _arms.Count == 0)
             {
                 StopStim();
@@ -675,6 +678,8 @@ namespace KeepMeAlive.Animation.Hands
                         _stim = StimPhase.Held;
                         _stimNeedleIn = true;
                         DownedVoiceController.OnStimNeedle(_revivee);
+                        var hand = RightArm()?.HandBone;
+                        StimSounds.PlayInject(hand != null ? hand.position : _chest.position);
                     }
                     break;
                 case StimPhase.Held:
@@ -761,7 +766,7 @@ namespace KeepMeAlive.Animation.Hands
             }
 
             bool kept = Time.time - _lastEnsure < EnsureTimeout;
-            bool want = kept && _handsOn && _dragger.HealthController.IsAlive && _revivee.HealthController.IsAlive;
+            bool want = kept && _handsOn && PlayerUtils.IsAlive(_dragger) && PlayerUtils.IsAlive(_revivee);
             if (want && (!_held || !_wanted)) _held = TakeHold();
             _wanted = want;
             AdvanceStim(want);
@@ -798,7 +803,7 @@ namespace KeepMeAlive.Animation.Hands
                 arm.ShoulderFromPelvis = Vector3.Lerp(arm.ShoulderFromPelvis, now, follow);
             }
 
-            Camera camera = _dragger.IsYourPlayer && _dragger.FirstPersonPointOfView ? CameraManager.Instance.Camera : null;
+            Camera camera = PlayerUtils.IsFirstPersonLocal(_dragger) && ModUtils.TryGetMainCamera(out var mainCam) ? mainCam : null;
             foreach (var arm in _arms)
             {
                 if (arm.Weight <= 0f) continue;

@@ -1,7 +1,6 @@
 //====================[ Imports ]====================
 using System.Collections.Generic;
 using EFT;
-using Fika.Core.Main.Utils;
 
 namespace KeepMeAlive.Animation.Hands.DefibHands
 {
@@ -31,6 +30,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         {
             _ = DefibHandsTrack.Instance;
             DefibPaddles.LoadAssets();
+            DefibSounds.Preload();
         }
 
         // Raid boundary: the players go with the raid.
@@ -47,8 +47,8 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
         public static bool Begin(Player player, float holdSeconds)
         {
             // A headless host draws nothing.
-            if (FikaBackendUtils.IsHeadless) return false;
-            if (player == null || player.HealthController == null || !player.HealthController.IsAlive) return false;
+            if (FikaBridge.IsHeadless()) return false;
+            if (!PlayerUtils.IsAlive(player)) return false;
             if (Sessions.ContainsKey(player.ProfileId))
             {
                 HandTrace.Log($"defib {player.ProfileId}: Begin refused, a sequence is already running");
@@ -60,7 +60,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
                 return false;
             }
 
-            bool hasItem = ModUtils.FindDefib(player) != null;
+            bool hasItem = InventoryUtils.FindDefib(player) != null;
             var driver = hasItem ? DefibHandsDriver.Create(player, holdSeconds) : null;
             if (driver == null)
             {
@@ -74,7 +74,7 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             FullScaleArms.Want(player, driver, true);
 
             // Only the reviver's own peer changes their hands; the others get the change from Fika.
-            if (player.IsYourPlayer && !ModUtils.IsEmptyHanded(player))
+            if (player.IsYourPlayer && !PlayerUtils.IsEmptyHanded(player))
             {
                 player.TrySaveLastItemInHands();
                 player.SetEmptyHands(null);
@@ -101,8 +101,8 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             if (Sessions.Count == 0 || player == null) return;
             if (!Sessions.TryGetValue(player.ProfileId, out var session) || session.Player != player) return;
 
-            bool alive = player.HealthController != null && player.HealthController.IsAlive;
-            session.Driver.Tick(alive && ModUtils.IsEmptyHanded(player));
+            bool alive = PlayerUtils.IsAlive(player);
+            session.Driver.Tick(alive && PlayerUtils.IsEmptyHanded(player));
             if (session.Driver.IsDone || !alive) Finish(session);
         }
 
@@ -117,9 +117,9 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
 
             if (!session.StowedWeapon) return;
             // Downed or dead: the downed flow (or death) deals with the hands.
-            if (player.HealthController == null || !player.HealthController.IsAlive || RMSession.IsPlayerCritical(player.ProfileId)) return;
+            if (!PlayerUtils.IsAliveAndStanding(player)) return;
             // Still empty (or still being made empty): nobody else has taken the hands, so the weapon goes back.
-            if (ModUtils.IsEmptyHanded(player) || player.ProcessStatus != Player.EProcessStatus.None) player.TrySetLastEquippedWeapon();
+            if (PlayerUtils.IsEmptyHanded(player) || player.ProcessStatus != Player.EProcessStatus.None) player.TrySetLastEquippedWeapon();
         }
     }
 }

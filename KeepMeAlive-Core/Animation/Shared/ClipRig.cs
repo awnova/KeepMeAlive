@@ -174,7 +174,7 @@ namespace KeepMeAlive.Animation.Shared
             scale = 0f;
 
             var bones = player.PlayerBones;
-            pelvis = bones != null && bones.Pelvis != null ? bones.Pelvis.Original : null;
+            pelvis = PlayerUtils.GetPelvis(player);
             if (clip == null || pelvis == null || pelvis.parent == null) return false;
 
             byName = NameTable(player, pelvis.parent);

@@ -1,7 +1,6 @@
 //====================[ Imports ]====================
 using System.Collections.Generic;
 using EFT;
-using Fika.Core.Main.Utils;
 using UnityEngine;
 
 namespace KeepMeAlive.Gameplay.Dragging
@@ -56,11 +55,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         private const float TurnOverSeconds = 0.8f;
         // A body still not on its back this long after the turn (stuck on something) is taken as it lies.
         private const float TurnOverGrace = 1f;
-        // How long the reach takes, by how far the hands travel (their way from the game's hand to the body as it lay, and on with
-        // the body as it rises to meet them): a person's reach takes about 0.45 s and 0.45 s more per metre, at least 0.5 s, so the
-        // hand's fastest speed (1.875 x distance / time for a reach that starts and stops at rest) stays about 1-2 m/s however far.
-        // With a fixed 0.5 s the hands peaked at 3.5 m/s (log, 2026-10-15). The dragger's hands (DraggerArms) take exactly this long,
-        // so the body's rise below ends as they arrive. Fixed once when the hands have taken hold; the default until then.
+        // Reach duration scales with hand travel so the body rises as the dragger's hands arrive.
         private const float ReachBaseSeconds = 0.45f;
         private const float ReachSecondsPerMetre = 0.45f;
         private const float ReachMinSeconds = 0.5f;
@@ -211,11 +206,11 @@ namespace KeepMeAlive.Gameplay.Dragging
                 case Stage.Stance:
                     if (StageTime < StanceSeconds) return;
                     // The same test as DraggerArms' (a firearm keeps the right hand off the body), on every peer.
-                    if (ModUtils.HoldsFirearm(Dragger) && StageTime < StanceMaxSeconds) return;
+                    if (PlayerUtils.HoldsFirearm(Dragger) && StageTime < StanceMaxSeconds) return;
                     // Only a ragdoll can be turned over (a headless host has none, and neither has a body that has not
                     // become one yet). The revivee's own body counts: it is ragdolled like every peer's copy of it, so
                     // every peer runs the same stages. A body on its side needs no turn: the lift squares it.
-                    FaceDown = !FikaBackendUtils.IsHeadless && Ragdolled && ChestFacesDown();
+                    FaceDown = !FikaBridge.IsHeadless() && Ragdolled && ChestFacesDown();
                     Begin(FaceDown ? Stage.TurnOver : Stage.Reach);
                     return;
                 case Stage.TurnOver:

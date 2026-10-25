@@ -44,12 +44,26 @@ namespace KeepMeAlive.Presentation.Spectating
 
         public static LocalBodyCamera Attach(Player player)
         {
-            var head = player.PlayerBones != null && player.PlayerBones.Head != null ? player.PlayerBones.Head.Original : null;
+            var head = PlayerUtils.GetHead(player);
             if (head == null) return null;
             var view = player.gameObject.AddComponent<LocalBodyCamera>();
             view._player = player;
             view._head = head;
             return view;
+        }
+
+        public static void Clear()
+        {
+            _placedFrame = -1;
+            _placedPlayer = null;
+            _handoverStart = -1f;
+            _handingBack = false;
+            _handBackFrame = -1;
+            if (_hooked)
+            {
+                Camera.onPreCull -= HandBack;
+                _hooked = false;
+            }
         }
 
         // The camera on the head, turned as the head is, kept on the capsule's side of whatever is between them. Also used by
@@ -101,15 +115,14 @@ namespace KeepMeAlive.Presentation.Spectating
         {
             try
             {
-                if (!CameraManager.Exist) return;
-                var main = CameraManager.Instance.Camera;
+                if (!ModUtils.TryGetMainCamera(out var main)) return;
                 int frame = Time.frameCount;
-                if (main == null || camera != main || _placedFrame >= frame || _handBackFrame == frame) return;
+                if (camera != main || _placedFrame >= frame || _handBackFrame == frame) return;
                 _handBackFrame = frame;
 
                 if (!_handingBack && _placedFrame != frame - 1) return;
                 var player = _placedPlayer;
-                if (player == null || !player.FirstPersonPointOfView || DownedSpectate.IsActive || SpectateFika.FikaCamActive())
+                if (player == null || !player.FirstPersonPointOfView || DownedSpectate.IsActive || FikaBridge.IsFikaCamActive())
                 {
                     _handoverStart = -1f;
                     _handingBack = false;
@@ -167,9 +180,7 @@ namespace KeepMeAlive.Presentation.Spectating
             {
                 var player = _player;
                 if (_failed || player == null || _head == null || !player.FirstPersonPointOfView || DownedSpectate.IsActive) return;
-                if (!CameraManager.Exist) return;
-                var main = CameraManager.Instance.Camera;
-                if (main == null || (camera != null && camera != main)) return;
+                if (!ModUtils.TryGetMainCamera(out var main) || (camera != null && camera != main)) return;
 
                 Place(player, _head, main);
             }

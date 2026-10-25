@@ -63,12 +63,12 @@ namespace KeepMeAlive.Presentation.Spectating
         //====================[ Per tick (local player) ]====================
         public static void Tick(Player player, RMPlayer st)
         {
-            if (player == null || !player.IsYourPlayer) return;
+            if (!PlayerUtils.IsLocalPlayer(player)) return;
 
             if (IsActive)
             {
-                if (SpectateFika.FikaCamActive()) { Exit(ExitKind.Yield, "Fika camera took over"); return; }
-                if (!player.HealthController.IsAlive) { Exit(ExitKind.Death, "dead"); return; }
+                if (FikaBridge.IsFikaCamActive()) { Exit(ExitKind.Yield, "Fika camera took over"); return; }
+                if (!PlayerUtils.IsAlive(player)) { Exit(ExitKind.Death, "dead"); return; }
                 if (!CanContinue(player, st)) { Exit(ExitKind.Normal, "state changed"); return; }
                 if (DownedRagdollController.DeliberateMove(player, st)) Exit(ExitKind.Normal, "moved");
                 return;
@@ -89,9 +89,9 @@ namespace KeepMeAlive.Presentation.Spectating
         private static bool CanStart(Player player, RMPlayer st)
         {
             if (!CanContinue(player, st)) return false;
-            if (!CameraManager.Exist || CameraManager.Instance.Camera == null) return false;
-            if (SpectateFika.FikaCamActive()) return false;
-            SpectateFika.GetTargets(Targets);
+            if (!ModUtils.TryGetMainCamera(out _)) return false;
+            if (FikaBridge.IsFikaCamActive()) return false;
+            FikaBridge.GetSpectateTargets(Targets);
             return Targets.Count > 0;
         }
 
@@ -100,7 +100,7 @@ namespace KeepMeAlive.Presentation.Spectating
         {
             try
             {
-                var camera = CameraManager.Instance.Camera;
+                if (!ModUtils.TryGetMainCamera(out var camera)) return;
                 var body = player.PlayerBody;
                 var controller = player.GetComponent<PlayerCameraController>();
                 if (body == null || controller == null || Targets.Count == 0) return;
@@ -120,7 +120,7 @@ namespace KeepMeAlive.Presentation.Spectating
 
                 SetTarget(Targets[0]);
                 _cam = camera.gameObject.AddComponent<DownedSpectateCam>();
-                RevivalDebugLog.LogDebug($"[Spectate] enter, {Targets.Count} target(s), first={SpectateFika.Name(_target)}");
+                RevivalDebugLog.LogDebug($"[Spectate] enter, {Targets.Count} target(s), first={PlayerUtils.GetPlayerDisplayName(_target)}");
             }
             catch (Exception ex)
             {
@@ -138,7 +138,7 @@ namespace KeepMeAlive.Presentation.Spectating
             var player = _player;
             var cam = _cam;
             bool wasActive = cam != null;
-            if (kind != ExitKind.Yield && wasActive && SpectateFika.FikaCamActive()) kind = ExitKind.Yield;
+            if (kind != ExitKind.Yield && wasActive && FikaBridge.IsFikaCamActive()) kind = ExitKind.Yield;
 
             _cam = null;
             _player = null;
@@ -171,6 +171,7 @@ namespace KeepMeAlive.Presentation.Spectating
             _player = null;
             _target = null;
             _noTargetSince = -1f;
+            Targets.Clear();
             Hud.SetSpectate(Hud.SpectateHint.Hidden);
             if (cam != null) UnityEngine.Object.Destroy(cam);
         }
@@ -183,17 +184,17 @@ namespace KeepMeAlive.Presentation.Spectating
         {
             if (!IsActive) return;
 
-            _fikaOwns = SpectateFika.FikaCamActive();
+            _fikaOwns = FikaBridge.IsFikaCamActive();
             if (_fikaOwns) return; // Tick gives way this tick
 
             var player = _player;
-            if (player == null || player.HealthController == null || !player.HealthController.IsAlive)
+            if (!PlayerUtils.IsAlive(player))
             {
                 Exit(ExitKind.Death, "player gone or dead");
                 return;
             }
 
-            SpectateFika.GetTargets(Targets);
+            FikaBridge.GetSpectateTargets(Targets);
             if (Targets.Count == 0)
             {
                 _target = null;
@@ -222,11 +223,11 @@ namespace KeepMeAlive.Presentation.Spectating
             rotation = default;
             if (_fikaOwns || _target == null) return false;
 
-            Transform anchor = SpectateFika.Anchor(_target, _headcam);
+            Transform anchor = PlayerUtils.GetSpectateAnchor(_target, _headcam);
             if (anchor == null) return false;
 
             Vector3 offset = _headcam ? HeadOffset : ThirdOffset;
-            if (SpectateFika.IsLeftStance(_target))
+            if (PlayerUtils.IsLeftStance(_target))
             {
                 if (_headcam) offset.z = -offset.z;
                 else offset.x = -offset.x;
@@ -242,7 +243,7 @@ namespace KeepMeAlive.Presentation.Spectating
         {
             if (!IsActive || Time.frameCount == _enteredFrame || ConsoleVisible()) return;
             // Fika's camera reads the same keys; once it has the view they are its own (Tick gives way this tick).
-            if (SpectateFika.FikaCamActive()) return;
+            if (FikaBridge.IsFikaCamActive()) return;
 
             if (UnityEngine.Input.GetKeyDown(ReturnKey)) Exit(ExitKind.Normal, "returned to body");
             else if (UnityEngine.Input.GetKeyDown(NextKey)) Cycle(1);
@@ -263,7 +264,7 @@ namespace KeepMeAlive.Presentation.Spectating
 
         private static void Cycle(int step)
         {
-            SpectateFika.GetTargets(Targets);
+            FikaBridge.GetSpectateTargets(Targets);
             if (Targets.Count == 0) return;
             int at = Targets.IndexOf(_target);
             if (at < 0) at = Mathf.Clamp(_index, 0, Targets.Count - 1);
@@ -274,19 +275,19 @@ namespace KeepMeAlive.Presentation.Spectating
         private static void SetTarget(Player target)
         {
             _target = target;
-            RevivalDebugLog.LogDebug($"[Spectate] following {SpectateFika.Name(target)}");
+            RevivalDebugLog.LogDebug($"[Spectate] following {PlayerUtils.GetPlayerDisplayName(target)}");
             ShowActive();
         }
 
-        private static void ShowActive() => Hud.SetSpectate(Hud.SpectateHint.Active, SpectateFika.Name(_target), _headcam, _nvNow);
+        private static void ShowActive() => Hud.SetSpectate(Hud.SpectateHint.Active, PlayerUtils.GetPlayerDisplayName(_target), _headcam, _nvNow);
 
         //====================[ Vision ]====================
         // The game's own switch (StartSwitch), not the On flag: the flag alone leaves the effect's components as they were.
         private static void SaveVision()
         {
             var cm = CameraManager.Instance;
-            _nvWas = _nvNow = cm.NightVision != null && cm.NightVision.On;
-            _thWas = _thNow = cm.ThermalVision != null && cm.ThermalVision.On;
+            _nvWas = _nvNow = cm != null && cm.NightVision != null && cm.NightVision.On;
+            _thWas = _thNow = cm != null && cm.ThermalVision != null && cm.ThermalVision.On;
         }
 
         // N is a plain night vision toggle; thermal (if it was on at entry) is switched off when night vision goes on.

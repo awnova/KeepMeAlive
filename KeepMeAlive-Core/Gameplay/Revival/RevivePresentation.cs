@@ -87,17 +87,24 @@ namespace KeepMeAlive.Gameplay.Revival
 
             //====================[ 1. Gun In Hand ]====================
             st.AllowWeaponEquipForReviveAnim = true;
-            yield return ModUtils.WaitForInventoryFree(player, 2f, "ReviveEffects_GunEquip");
-            if (!IsStillReviving(player, st)) yield break;
-
-            // Wait for the hands transition callback before continuing the revive animation.
-            bool equipped = false;
-            player.SetFirstAvailableItem((Result<IHandsController> _) => equipped = true);
-            float elapsed = 0f;
-            while (!equipped && elapsed < EquipTimeoutSeconds)
+            try
             {
-                elapsed += Time.deltaTime;
-                yield return null;
+                yield return InventoryUtils.WaitForInventoryFree(player, 2f, "ReviveEffects_GunEquip");
+                if (!IsStillReviving(player, st)) yield break;
+
+                // Wait for the hands transition callback before continuing the revive animation.
+                bool equipped = false;
+                player.SetFirstAvailableItem((Result<IHandsController> _) => equipped = true);
+                float elapsed = 0f;
+                while (!equipped && elapsed < EquipTimeoutSeconds)
+                {
+                    elapsed += Time.deltaTime;
+                    yield return null;
+                }
+            }
+            finally
+            {
+                st.AllowWeaponEquipForReviveAnim = false;
             }
 
             //====================[ 2. Inventory Pose ]====================
@@ -107,7 +114,7 @@ namespace KeepMeAlive.Gameplay.Revival
 
             player.SetInventoryOpened(true);
             st.ReviveEffectsCoroutine = null;
-            ReviveDebug.Log("ReviveEffects_Done", player.ProfileId, true, $"equipped={equipped}");
+            ReviveDebug.Log("ReviveEffects_Done", player.ProfileId, true, null);
         }
 
         //====================[ Stop ]====================

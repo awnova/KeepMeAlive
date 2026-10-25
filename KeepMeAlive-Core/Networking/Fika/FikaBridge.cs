@@ -1,17 +1,23 @@
 //====================[ Imports ]====================
 using System;
+using System.Collections.Generic;
 using Comfort.Common;
+using EFT;
 using Fika.Core.Main.Utils;
 using Fika.Core.Networking;
 using Fika.Core.Networking.LiteNetLib;
 using Fika.Core.Networking.LiteNetLib.Utils;
+using FikaCoopHandler = global::Fika.Core.Main.Components.CoopHandler;
+using FikaFreeCamera = global::Fika.Core.Main.FreeCamera.FreeCamera;
+using FikaObservedPlayer = global::Fika.Core.Main.Players.ObservedPlayer;
+using FikaPlayer = global::Fika.Core.Main.Players.FikaPlayer;
 
 namespace KeepMeAlive.Networking.Fika
 {
+    // The only Fika API surface used by the rest of the mod for state queries, peer/spectate
     //====================[ FikaBridge ]====================
-    // The only outbound Fika API used by the rest of the mod. Every Send* method here logs a
-    // network trace and pushes the packet over the wire in one step - there is no separate
-    // pass-through layer.
+    // lookups, and outbound packets. Every Send* method here logs a network trace and pushes
+    // the packet over the wire in one step - there is no separate pass-through layer.
     //
     // Note on `broadcast: true`: on a client this only sends to the host (FikaClient.SendData);
     // the host then relays to every other peer except the original sender (FikaServer.OnNetworkReceive).
@@ -19,13 +25,80 @@ namespace KeepMeAlive.Networking.Fika
     // applying its own state locally before or after calling here - see each call site.
     internal static class FikaBridge
     {
+        private static readonly Comparison<Player> ByNetId =
         //====================[ Network Utilities ]====================
+            (a, b) => ((FikaPlayer)a).NetId.CompareTo(((FikaPlayer)b).NetId);
+
         public static bool IAmHost()
         {
             return FikaBackendUtils.IsServer;
         }
 
+        public static bool IsHeadless()
         //====================[ Send Helper ]====================
+        {
+            return FikaBackendUtils.IsHeadless;
+        }
+
+        public static bool IsScav()
+        {
+            return FikaBackendUtils.IsScav;
+        }
+
+        public static bool IsObservedPeer(Player player) => player is FikaObservedPlayer;
+
+        public static bool IsFikaBuiltInReviveEnabled() =>
+            global::Fika.Core.FikaPlugin.Instance.Settings.ReviveConfig.Enabled;
+
+        // True while Fika's free/spectate camera owns the view. I leave it alone when extracted or dead.
+        public static bool IsFikaCamActive()
+        {
+            if (!ModUtils.TryGetMainCamera(out var cam)) return false;
+            var fika = cam.GetComponent<FikaFreeCamera>();
+            return fika != null && fika.IsActive;
+        }
+
+        // Populates `into` with all human players tracked by Fika's CoopHandler.
+        // Returns false if CoopHandler is not available yet.
+        public static bool TryGetHumanPlayers(List<Player> into)
+        {
+            into.Clear();
+            if (!FikaCoopHandler.TryGetCoopHandler(out var handler) || handler.HumanPlayers == null)
+            {
+                return false;
+            }
+
+            var humans = handler.HumanPlayers;
+            for (int i = 0; i < humans.Count; i++)
+            {
+                if (humans[i] != null)
+                {
+                    into.Add(humans[i]);
+                }
+            }
+
+            return true;
+        }
+
+        // Living, non-extracted human teammates other than the local player, in a stable (NetId) order.
+        public static void GetSpectateTargets(List<Player> into)
+        {
+            into.Clear();
+            if (!FikaCoopHandler.TryGetCoopHandler(out var handler) || handler.HumanPlayers == null) return;
+
+            var extracted = handler.ExtractedPlayers;
+            var humans = handler.HumanPlayers;
+            for (int i = 0; i < humans.Count; i++)
+            {
+                var p = humans[i];
+                if (p == null || p.IsYourPlayer || p.PlayerBones == null) continue;
+                if (!PlayerUtils.IsAlive(p)) continue;
+                if (extracted != null && extracted.Contains(p.NetId)) continue;
+                into.Add(p);
+            }
+            into.Sort(ByNetId);
+        }
+
         private static void SendPacket<T>(ref T packet, DeliveryMethod delivery = DeliveryMethod.ReliableOrdered) where T : struct, INetSerializable
         {
             if (!Singleton<IFikaNetworkManager>.Instantiated)
@@ -161,7 +234,8 @@ namespace KeepMeAlive.Networking.Fika
                 dropX                 = st.DropRestPelvis.x,
                 dropZ                 = st.DropRestPelvis.z,
                 dropSpineYaw          = st.DropSpineYaw,
-                dropOnBack            = st.DropOnBack
+                dropOnBack            = st.DropOnBack,
+                selfReviving          = st.IsSelfReviving
             };
             SendPacket(ref packet);
         }

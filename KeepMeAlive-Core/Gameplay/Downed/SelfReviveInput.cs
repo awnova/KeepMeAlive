@@ -39,7 +39,7 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 RevivalController.Trace("SelfHold_ReleasedCanceled", player, st, $"| key={key}");
                 st.ClearSelfReviveInput();
-                DownedStateController.CancelReviveState(player, st, PlayerFacingMessages.Revive.SelfReviveCanceled, Color.yellow);
+                DownedStateController.CancelReviveState(player, st, null);
                 return;
             }
 
@@ -58,16 +58,18 @@ namespace KeepMeAlive.Gameplay.Downed
 
             if (!RevivePolicy.HasRequiredItem(ReviveSource.Self, player))
             {
+                // Said by the strip's "Needs stim" chip; refreshed here, as the stim may have been taken since it was drawn.
                 RevivalController.Trace("SelfHold_BlockedNoStim", player, st);
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NoStimFound);
+                DownedStateController.ShowSelfRevivePromptIfEligible(player);
                 return;
             }
 
             int selfReviveCost = RevivePolicy.LivesCost(ReviveSource.Self);
             if (st.LivesRemaining < selfReviveCost)
             {
+                // Said by the strip's "Not enough lives" chip; refreshed here in case the lives changed since it was drawn.
                 RevivalController.Trace("SelfHold_BlockedOutOfLives", player, st, $"| livesRemaining={st.LivesRemaining} cost={selfReviveCost}");
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NotEnoughLives(selfReviveCost));
+                DownedStateController.ShowSelfRevivePromptIfEligible(player);
                 return;
             }
 

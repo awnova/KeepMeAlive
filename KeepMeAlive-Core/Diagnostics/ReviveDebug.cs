@@ -1,6 +1,4 @@
 //====================[ Imports ]====================
-using Fika.Core.Main.Utils;
-
 namespace KeepMeAlive.Diagnostics
 {
     //====================[ ReviveDebug ]====================
@@ -12,8 +10,8 @@ namespace KeepMeAlive.Diagnostics
         {
             if (!RevivalDebugLog.IsReviveFlowEnabled) return;
 
-            string machine = FikaBackendUtils.IsHeadless ? "Headless" : "Client";
-            string server = FikaBackendUtils.IsServer ? "T" : "F";
+            string machine = FikaBridge.IsHeadless() ? "Headless" : "Client";
+            string server = FikaBridge.IAmHost() ? "T" : "F";
             string local = isLocal ? "T" : "F";
             string tail = string.IsNullOrEmpty(details) ? string.Empty : $" {details}";
             RevivalDebugLog.LogReviveFlow($"[ReviveDebug:{step}] machine={machine} server={server} playerId={playerId} isLocal={local}{tail}");

@@ -5,7 +5,6 @@ using BepInEx.Logging;
 using System.Collections.Generic;
 using HarmonyLib;
 using EFT.HealthSystem;
-using Fika.Core.Main.Utils;
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -24,8 +23,8 @@ namespace KeepMeAlive
         public static ManualLogSource LogSource;
         public static MonoBehaviour StaticCoroutineRunner;
 
-        // Pass-through to the canonical Fika flag set by FikaHeadlessPlugin.Awake().
-        public static bool IAmDedicatedClient => FikaBackendUtils.IsHeadless;
+        // Pass-through to FikaBridge's headless flag.
+        public static bool IAmDedicatedClient => FikaBridge.IsHeadless();
         public static bool SAINInstalled { get; private set; }
 
         //====================[ Unity Lifecycle ]====================
@@ -77,6 +76,7 @@ namespace KeepMeAlive
             new FikaHealthBarUpdateHealthPatch().Enable();
             new DownedPlayerLootPatch().Enable();
             new DownedLootGuardPatch().Enable();
+            new DownedLootInventoryKeyPatch().Enable();
             new TeamHealDoMedEffectPatch().Enable();
             new TeamHealUseTimePatch().Enable();
             new SilentInventoryCommandBlockPatch().Enable();

@@ -6,17 +6,12 @@ using UnityEngine;
 
 namespace KeepMeAlive.Animation.Ragdoll
 {
+    // Debug traces for ragdoll movement, settling, and muscle pose.
     //====================[ BodyRagdoll: Trace ]====================
-    // Debug logs only (Enable Debug Logs): what a taken-over body is doing, one place for all of it. Nothing here changes
-    // anything; each trace is a line (or a few) in the log to read after a drop, a drag or a get-up.
-    //   [GetUpTrace]  - the seconds after the owner took the body back
-    //   [SettleTrace] - how fast the parts of a dropped body still move, against the settle threshold
-    //   [MuscleTrace] - how far each muscle is from the pose it pulls toward, and the body's shape
     internal static partial class BodyRagdoll
     {
+        // Trace the body's transition back to EFT after getting up.
         //====================[ Get Up Trace ]====================
-        // Debug logs only: one line per tick for the seconds after the owner said the body got up, covering the roll,
-        // the hand-back to EFT and what EFT's animation does with it.
         private const float GetUpTraceSeconds = 8f;
 
         private static void TraceAfterGetUp(Player player, bool want, Session session)
@@ -26,7 +21,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             if (st.GetUpTime <= 0f || since > GetUpTraceSeconds) return;
 
             var mc = player.MovementContext;
-            Transform pelvis = player.PlayerBones?.Pelvis?.Original;
+            Transform pelvis = PlayerUtils.GetPelvis(player);
             string phase = session == null ? "eft" : session.Phase.ToString().ToLowerInvariant();
             Plugin.LogSource.LogInfo($"[GetUpTrace] {player.ProfileId} t={since:F2} phase={phase} state={st.State} limp={st.IsLimp} want={want} " +
                 $"root={player.Transform.position}/{player.Transform.eulerAngles.y:F0} pelvis={(pelvis != null ? pelvis.position.ToString() : "-")}/{(pelvis != null ? pelvis.eulerAngles.ToString() : "-")} " +
@@ -44,9 +39,8 @@ namespace KeepMeAlive.Animation.Ragdoll
                 $"fastestSpin={fastestSpin:F3} rad/s (limit {spin:F3}) settled={settled} [{fastestName.Replace(BoneNames.Prefix, "")} / {spinName.Replace(BoneNames.Prefix, "")}]");
         }
 
+        // Trace the largest muscle pose errors several times per second.
         //====================[ Trace ]====================
-        // Debug logs only, a few times a second while the body is a ragdoll: how far each muscle is from the pose it pulls
-        // toward (degrees), worst first, to see whether the pose is being reached.
         private static void TraceMuscles(Session session, float step)
         {
             if (!RevivalDebugLog.IsDebugLogsEnabled || Time.time < session.NextMuscleTrace) return;
@@ -57,8 +51,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 errors.Add((Mathf.Abs(AngleOff(muscle, muscle.SettleRelative, out _)), muscle));
             errors.Sort((a, b) => b.Angle.CompareTo(a.Angle));
 
-            // The worst few: how far off, split into the turn about the joint's twist axis and the rest (the swing), next
-            // to the joint's limits (the joint cannot go past them however hard the muscle pulls).
+            // Log the largest pose errors with their twist, swing, and joint limits.
             var line = new System.Text.StringBuilder();
             for (int i = 0; i < errors.Count && i < 4; i++)
             {
@@ -70,9 +63,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             Plugin.LogSource.LogInfo($"[MuscleTrace] {session.Player.ProfileId} step={step * 1000f:F1}ms motors damping={MuscleDampingRatio:F2} strengths arms/legs/spine/head={ArmMuscleStrength:F0}/{LegMuscleStrength:F0}/{SpineMuscleStrength:F0}/{NeckHeadMuscleStrength:F0} muscles={errors.Count} worst:{line}{Environment.NewLine}    shape: {DescribeShape(session)}{Environment.NewLine}    {DescribeSpeedCaps(session)}");
         }
 
-        // Debug logs only: the shape the body has taken in the world, to see whether it lies down or bends up. Each line
-        // of the body (hips to chest, chest to head, hips to each knee) as degrees above the horizon (0 lies flat, 90
-        // points at the sky, negative is into the ground), and whether the chest faces up (1 on its back, -1 on its front).
+        // Describe the body's orientation using the angles between its main body parts and the horizon.
         private static string DescribeShape(Session session)
         {
             if (session.Pelvis == null || session.Chest == null) return "no body";

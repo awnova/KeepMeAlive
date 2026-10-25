@@ -39,8 +39,8 @@ namespace KeepMeAlive.Runtime.State
         // Causes the weapon-proceed-block patches to pass through so the equip can complete.
         public bool AllowWeaponEquipForReviveAnim { get; set; }
 
+        // ReviveSource as int: 0 = Self, 1 = Team, 2 = Defib
         //====================[ Session Info ]====================
-        // 0 = Self, 1 = Team
         public int ReviveRequestedSource { get; set; }
         public string CurrentReviverId { get; set; } = string.Empty;
         // Profile id of the teammate currently dragging this (downed) player; empty when nobody is.
@@ -108,8 +108,11 @@ namespace KeepMeAlive.Runtime.State
         //====================[ Stored Values ]====================
         public EDamageType PlayerDamageType { get; set; } = EDamageType.Undefined;
 
+        // The bleed-out countdown (BleedingOut only; TickDowned reads CriticalTimer from it).
         //====================[ UI Timers ]====================
         public CustomTimer CriticalStateMainTimer { get; set; }
+        // The "Reviving" status bar for the revive progress phase.
+        public CustomTimer ReviveStatusTimer { get; set; }
         public CustomTimer RevivePromptTimer { get; set; }
 
         //====================[ Coroutine Handles ]====================

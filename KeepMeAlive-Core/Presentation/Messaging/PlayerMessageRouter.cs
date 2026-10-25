@@ -28,7 +28,7 @@ namespace KeepMeAlive.Presentation.Messaging
                     break;
 
                 case MessageAudience.InvolvedPlayers:
-                    string localId = ModUtils.GetYourPlayer()?.ProfileId;
+                    string localId = PlayerUtils.GetYourPlayer()?.ProfileId;
                     if (string.IsNullOrEmpty(localId))
                     {
                         return;
@@ -41,6 +41,18 @@ namespace KeepMeAlive.Presentation.Messaging
                         VFX_UI.Text(color, message);
                     }
                     break;
+            }
+        }
+
+        public static void NotifySafe(string tag, Color color, Func<string> buildMessage, string actorPlayerId = null, string targetPlayerId = null, MessageAudience audience = MessageAudience.InvolvedPlayers)
+        {
+            try
+            {
+                Notify(color, buildMessage(), audience, actorPlayerId, targetPlayerId);
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogWarning($"[VFX_UI] {tag} notify failed: {ex.Message}");
             }
         }
     }

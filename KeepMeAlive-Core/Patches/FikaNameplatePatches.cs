@@ -150,9 +150,9 @@ namespace KeepMeAlive.Patches
             if (!IsActive) return;
             IsActive = false;
 
-            _plate.playerNameScreen.SetText(_origName);
-            _plate.playerNameScreen.color = _origNameColor;
-            _plate.playerNameScreen.fontStyle = _origNameStyle;
+            if (_plate?.playerNameScreen != null) _plate.playerNameScreen.SetText(_origName);
+            if (_plate?.playerNameScreen != null) _plate.playerNameScreen.color = _origNameColor;
+            if (_plate?.playerNameScreen != null) _plate.playerNameScreen.fontStyle = _origNameStyle;
 
             RestoreHealth();
         }
@@ -212,6 +212,7 @@ namespace KeepMeAlive.Patches
         // by FikaHealthBarUpdateHealthPatch while a plate is critical).
         private void RestoreHealth()
         {
+            if (_plate == null || _player == null) return;
             var settings = FikaPlugin.Instance.Settings;
             bool hidden = settings.HideHealthBar.Value;
             bool useNumber = settings.UseHealthNumber.Value;

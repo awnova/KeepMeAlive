@@ -7,7 +7,6 @@ using Audio.SpatialSystem;
 using EFT;
 using EFT.CameraControl;
 using EFT.HealthSystem;
-using Fika.Core.Main.Utils;
 using HarmonyLib;
 using UnityEngine;
 
@@ -16,22 +15,8 @@ namespace KeepMeAlive.Presentation.Audio
     //====================[ DownedVoiceController ]====================
     // The voice of a player bleeding out, from their own voice banks (vanilla or custom).
     //
-    // One owner, one voice. Only the downed player's own client picks and starts a sound: it goes through
-    // Speaker.PlayDirect, FikaPlayer.OnPhraseTold sends it (trigger + TaggedClip.NetId) and every peer plays that exact
-    // clip on its copy, so everyone hears the same thing at the same time. While a player bleeds out, a peer's copy
-    // says nothing of its own (DownedBreathPatch, ObservedHitLinePatch); outside the bleed-out voice is left to the
-    // game and Fika.
-    //
-    // What the owner says while BleedingOut, on one timeline (Voice):
-    //   - a hit line for every knock to the body: going down, being picked up, being dropped, a stim's needle going in
-    //     and coming out (Cry). When the hit that did it already said one, that is the cry. A new wound's hit line is
-    //     the game's and always cuts in.
-    //   - breathing, in bouts with a quiet spell between (the game's breath loop is held off).
-    //   - an agony line every so often and the odd bleeding line, lying still or crawling.
-    //   - near-death lines at fixed marks, a minute or more apart (2:00 and 1:00 left of 3:00).
-    // I wait for any sound to end before playing another, then play a breath bout.
-    // When a revive starts the voice goes back to the game: the player's health effects pick the breathing (HandBack).
-    // A downed player's death line is the owner's too, said before the body dies (SpeakDeathLine).
+    // The downed player's client selects and sends each voice clip; peers play the same clip.
+    // The controller schedules hit lines, breathing, agony, bleeding, and near-death lines until revival or death.
     internal static class DownedVoiceController
     {
         //====================[ Tuning ]====================
@@ -145,7 +130,7 @@ namespace KeepMeAlive.Presentation.Audio
             }
 
             var voice = GetVoice(player.ProfileId);
-            bool alive = player.HealthController is { IsAlive: true };
+            bool alive = PlayerUtils.IsAlive(player);
 
             // The body lies on the floor for the whole downed state, the revive included.
             SetOcclusionLift(player, voice, st.IsCritical && alive);
@@ -248,7 +233,7 @@ namespace KeepMeAlive.Presentation.Audio
         // I manage this player's voice while they are alive and bleeding out. Their vanilla breath loop is held off
         // meanwhile. A revive in progress is the game's.
         public static bool OwnsBreath(Player player, RMPlayer st) =>
-            st.State == RMState.BleedingOut && !player.IsAI && player.HealthController is { IsAlive: true };
+            st.State == RMState.BleedingOut && PlayerUtils.IsAliveHuman(player);
 
         public static bool OwnsBreath(Player player) =>
             player != null && RMSession.TryGetPlayerState(player.ProfileId, out var st) && OwnsBreath(player, st);
@@ -283,9 +268,9 @@ namespace KeepMeAlive.Presentation.Audio
         // voice was handed back to the game; the cry is still the owner's.
         public static void OnStimNeedle(Player player)
         {
-            if (player == null || !player.IsYourPlayer || player.Speaker == null) return;
+            if (!PlayerUtils.IsLocalPlayer(player) || player.Speaker == null) return;
             if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return;
-            if (!OwnsBreath(player, st) && !(st.State == RMState.Reviving && player.HealthController is { IsAlive: true })) return;
+            if (!OwnsBreath(player, st) && !(st.State == RMState.Reviving && PlayerUtils.IsAlive(player))) return;
             try
             {
                 var voice = GetVoice(player.ProfileId);
@@ -392,14 +377,12 @@ namespace KeepMeAlive.Presentation.Audio
         public static void OnTeammateDowned(string profileId)
         {
             // A headless host has no screen or ears.
-            if (FikaBackendUtils.IsHeadless) return;
+            if (FikaBridge.IsHeadless()) return;
 
-            VFX_UI.Text(Color.red, PlayerFacingMessages.Downed.TeammateDown(ModUtils.GetPlayerDisplayName(profileId)));
+            VFX_UI.Text(Color.red, PlayerFacingMessages.Downed.TeammateDown(PlayerUtils.GetPlayerDisplayName(profileId)));
 
-            var local = ModUtils.GetYourPlayer();
-            if (local == null || local.Speaker == null || local.HealthController is not { IsAlive: true }) return;
-            // A downed player is busy with their own voice.
-            if (RMSession.IsPlayerCritical(local.ProfileId)) return;
+            var local = PlayerUtils.GetYourPlayer();
+            if (local == null || local.Speaker == null || !PlayerUtils.IsAliveAndStanding(local)) return;
 
             // Every voice's friendly_hit lines are in its Hit bank (the squad's "teammate hit" call), except where
             // that bank holds something else (usec_2, usec_3): then its OnFriendlyDown "teammate down" lines.
@@ -533,7 +516,7 @@ namespace KeepMeAlive.Presentation.Audio
             }
 
             Vector3 offset = Vector3.zero;
-            var spine = player.PlayerBones?.Spine1;
+            var spine = PlayerUtils.GetSpine1(player);
             if (lift && spine != null)
                 offset.y = Mathf.Max(0f, player.Transform.position.y + OcclusionHeight - spine.position.y);
             container.SetPositionOffset(offset);

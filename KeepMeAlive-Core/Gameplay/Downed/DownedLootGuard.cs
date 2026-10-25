@@ -56,11 +56,10 @@ namespace KeepMeAlive.Gameplay.Downed
             if (item == null || item.GetRootItem() != equipment) return false;
             if (item.CurrentAddress is SlotItemAddress) return true;
 
-            if (string.Equals(item.StringTemplateId, DefibIds.TemplateId, System.StringComparison.OrdinalIgnoreCase)) return true;
+            if (InventoryUtils.IsDefib(item)) return true;
 
             // The stim is only protected while a revive needs it; otherwise it is ordinary loot.
-            return RevivePolicy.IsStimRequiredAnywhere
-                && string.Equals(item.StringTemplateId, StimIds.TemplateId, System.StringComparison.OrdinalIgnoreCase);
+            return RevivePolicy.IsStimRequiredAnywhere && InventoryUtils.IsStim(item);
         }
 
         // Handles transactions that place items into the revivee's worn slots.

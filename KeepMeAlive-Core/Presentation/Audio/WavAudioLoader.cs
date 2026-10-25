@@ -1,16 +1,13 @@
 //====================[ Imports ]====================
 using System;
-using System.IO;
-using System.Reflection;
 using UnityEngine;
 
 namespace KeepMeAlive.Presentation.Audio
 {
+    // Parses a 16-bit PCM .wav embedded resource into a Unity AudioClip at runtime.
     //====================[ WavAudioLoader ]====================
-    // Parses a plain PCM .wav embedded resource into a Unity AudioClip at runtime.
-    // No AssetBundle/Unity-Editor build step is required - the game's engine build
-    // doesn't ship UnityWebRequestAudioModule, so this manual RIFF parse is the only
-    // dependency-free way to turn a shipped .wav into a playable AudioClip here.
+    // The game's engine build doesn't ship UnityWebRequestAudioModule, so this manual
+    // RIFF parse is the only way to turn a shipped .wav into a playable AudioClip here.
     internal static class WavAudioLoader
     {
         //====================[ Public API ]====================
@@ -18,26 +15,11 @@ namespace KeepMeAlive.Presentation.Audio
         {
             try
             {
-                var asm = Assembly.GetExecutingAssembly();
-                using var stream = asm.GetManifestResourceStream(resourceName);
-                if (stream == null)
-                {
-                    Plugin.LogSource.LogError($"[WavAudioLoader] Embedded resource '{resourceName}' not found.");
-                    return null;
-                }
-
-                byte[] bytes;
-                using (var ms = new MemoryStream())
-                {
-                    stream.CopyTo(ms);
-                    bytes = ms.ToArray();
-                }
-
-                return ParseWav(bytes, clipName);
+                return ParseWav(EmbeddedData.ReadBytes(resourceName), clipName);
             }
             catch (Exception ex)
             {
-                Plugin.LogSource.LogError($"[WavAudioLoader] LoadFromEmbeddedResource('{resourceName}') error: {ex}");
+                Plugin.LogSource.LogError($"[WavAudioLoader] Could not load {resourceName}: {ex.Message}");
                 return null;
             }
         }

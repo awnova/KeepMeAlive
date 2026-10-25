@@ -13,7 +13,8 @@ namespace KeepMeAlive.Runtime.State
 
         private static readonly Dictionary<string, RMPlayer> PlayerStates = new();
 
-        public static void Clear() => PlayerStates.Clear();
+        public static int RaidGeneration { get; private set; }
+        public static void Clear() { RaidGeneration++; PlayerStates.Clear(); }
 
         public static bool IsPlayerCritical(string playerId) =>
             TryGetPlayerState(playerId, out var st) && st.IsCritical;
@@ -42,6 +43,7 @@ namespace KeepMeAlive.Runtime.State
         public static void RemovePlayer(string playerId)
         {
             if (string.IsNullOrEmpty(playerId)) return;
+            GhostMode.ClearGhostFlag(playerId);
             if (!PlayerStates.TryGetValue(playerId, out var state)) return;
 
             var oldState = state.State;

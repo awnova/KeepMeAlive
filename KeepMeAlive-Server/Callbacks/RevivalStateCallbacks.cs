@@ -22,7 +22,7 @@ public class RevivalStateCallbacks(
     //====================[ Routes ]====================
     public ValueTask<string> BeginCritical(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         Handle(url, info, sessionId, owned => RequireOwner(info.PlayerId, owned)
-            ?? Ok(stateService.SetBleedingOut(info.PlayerId)));
+            ?? RevivalAuthorityResponse.Ok(stateService.SetBleedingOut(info.PlayerId)));
 
     public ValueTask<string> RequestReviveStart(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         Handle(url, info, sessionId, owned =>
@@ -41,14 +41,14 @@ public class RevivalStateCallbacks(
 
     public ValueTask<string> EndInvulnerability(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         Handle(url, info, sessionId, owned => RequireOwner(info.PlayerId, owned)
-            ?? Ok(stateService.MarkCooldown(info.PlayerId)));
+            ?? RevivalAuthorityResponse.Ok(stateService.MarkCooldown(info.PlayerId)));
 
     public ValueTask<string> Reset(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         Handle(url, info, sessionId, owned => RequireOwner(info.PlayerId, owned)
-            ?? Ok(stateService.Reset(info.PlayerId)));
+            ?? RevivalAuthorityResponse.Ok(stateService.Reset(info.PlayerId)));
 
     public ValueTask<string> Get(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
-        Handle(url, info, sessionId, _ => Ok(stateService.Get(info.PlayerId)));
+        Handle(url, info, sessionId, _ => RevivalAuthorityResponse.Ok(stateService.Get(info.PlayerId)));
 
     public ValueTask<string> GetRuntimeConfig(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         new(httpResponseUtil.NoBody(configService.Config));
@@ -61,13 +61,13 @@ public class RevivalStateCallbacks(
         try
         {
             response = string.IsNullOrWhiteSpace(info?.PlayerId)
-                ? Fail(RevivalDeniedCode.BadRequest, "PlayerId is required")
+                ? RevivalAuthorityResponse.Fail(RevivalDeniedCode.BadRequest, "PlayerId is required")
                 : action(profileResolver.GetOwnedProfileIds(sessionId));
         }
         catch (Exception ex)
         {
             logger.Warning($"[KeepMeAlive.Server] Authority route {url} failed: {ex.Message}");
-            response = Fail(RevivalDeniedCode.ServerError, "Server error");
+            response = RevivalAuthorityResponse.Fail(RevivalDeniedCode.ServerError, "Server error");
         }
 
         return new ValueTask<string>(httpResponseUtil.NoBody(response));
@@ -78,11 +78,6 @@ public class RevivalStateCallbacks(
         if (owned.Contains(profileId)) return null;
 
         logger.Warning($"[KeepMeAlive.Server] Rejected request acting for {profileId}: caller does not own that profile.");
-        return Fail(RevivalDeniedCode.NotAuthorized, "Not authorized for this player");
+        return RevivalAuthorityResponse.Fail(RevivalDeniedCode.NotAuthorized, "Not authorized for this player");
     }
-
-    private static RevivalAuthorityResponse Ok(RevivalStateEntry state) => new() { Success = true, State = state };
-
-    private static RevivalAuthorityResponse Fail(RevivalDeniedCode code, string reason) =>
-        new() { Success = false, DenialCode = code, Reason = reason };
 }

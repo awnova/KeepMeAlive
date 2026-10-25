@@ -66,9 +66,23 @@ namespace KeepMeAlive.Gameplay.Dragging
             return IsLocalDragging && DragContext.TryGetSession(_draggingId, out session);
         }
 
+        // The world position of the downed player's visual/interactable body (ragdoll chest or posed chest/pelvis),
         //====================[ Eligibility ]====================
+        // which can sit away from revivee.Position after a fall or drag release.
+        public static Vector3 BodyPosition(Player revivee)
+        {
+            if (revivee == null) return Vector3.zero;
+            if (BodyRagdoll.TryGetChest(revivee.ProfileId, out Vector3 chest)) return chest;
+            Transform bone = DragGrip.Chest(revivee) ?? PlayerUtils.GetPelvis(revivee);
+            return bone != null ? bone.position : revivee.Position;
+        }
+
+        public static bool IsInRange(Player viewer, Player revivee) =>
+            viewer != null && revivee != null && (viewer.Position - BodyPosition(revivee)).sqrMagnitude <= StartRange * StartRange;
+
         public static bool CanStartDrag(Player dragger, Player revivee, RMPlayer reviveeState)
         {
+            if (dragger == null || revivee == null || reviveeState == null) return false;
             if (IsLocalDragging) return false;
             if (reviveeState.State != RMState.BleedingOut) return false;
             if (reviveeState.IsBeingDragged || reviveeState.IsBeingRevived || reviveeState.IsSelfReviving || reviveeState.SelfReviveAwaitingAuth) return false;
@@ -77,7 +91,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (RMSession.IsPlayerCritical(dragger.ProfileId)) return false;
             // Dragging is done crouched; going prone is one of the ways to let go.
             if (dragger.MovementContext.IsInPronePose) return false;
-            return (dragger.Position - revivee.Position).sqrMagnitude <= StartRange * StartRange;
+            return IsInRange(dragger, revivee);
         }
 
         //====================[ Shared State Mutation ]====================
@@ -114,8 +128,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (Time.time - st.DragClaimTime < ClaimSettleTime) return;
 
             // Resend a release if the owner still thinks this player is dragging (them, not whoever is held now).
-            var local = ModUtils.GetYourPlayer();
-            if (local != null && draggerId == local.ProfileId && _draggingId != reviveeId)
+            if (PlayerUtils.IsLocalPlayer(draggerId) && _draggingId != reviveeId)
             {
                 FikaBridge.SendDragStatePacket(reviveeId, draggerId, false);
                 return;
@@ -153,7 +166,7 @@ namespace KeepMeAlive.Gameplay.Dragging
 
         private static void Release(string reviveeId, string draggerId, bool held)
         {
-            var local = ModUtils.GetYourPlayer();
+            var local = PlayerUtils.GetYourPlayer();
             // Only a lifted body is put down somewhere new, and only a peer with a ragdoll of it can watch it settle.
             string declarer = held && local != null && BodyRagdoll.IsRagdolled(reviveeId) ? local.ProfileId : string.Empty;
             ExpectDropRest(reviveeId, draggerId, declarer);
@@ -183,7 +196,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             if (_declareFor == null || _declareFor != reviveeId) return;
             _declareFor = null;
-            var local = ModUtils.GetYourPlayer();
+            var local = PlayerUtils.GetYourPlayer();
             if (local == null || Time.time > _declareUntil) return;
             if (!ApplyDropRest(reviveeId, local.ProfileId, pelvis, spineYaw, onBack)) return;
             FikaBridge.SendDropRestPacket(reviveeId, local.ProfileId, pelvis, spineYaw, onBack);
@@ -205,7 +218,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             st.HasDropRest = true;
 
             // The owner's real body goes under it.
-            var local = ModUtils.GetYourPlayer();
+            var local = PlayerUtils.GetYourPlayer();
             if (local != null && local.ProfileId == reviveeId) DownedRagdollController.OnDropRest(local, st);
             return true;
         }
@@ -241,7 +254,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (!IsLocalDragging) return;
 
             string reviveeId = _draggingId;
-            HandTrace.Log($"drag {dragger.ProfileId}: let go of {reviveeId}: {reason} | {ReleaseSnapshot(dragger, ModUtils.GetPlayerById(reviveeId))}");
+            HandTrace.Log($"drag {dragger.ProfileId}: let go of {reviveeId}: {reason} | {ReleaseSnapshot(dragger, PlayerUtils.GetPlayerById(reviveeId))}");
             bool held = IsLocalHoldingBody;
             ApplyDragState(reviveeId, dragger.ProfileId, false);
             Release(reviveeId, dragger.ProfileId, held);
@@ -257,7 +270,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             var mc = dragger.MovementContext;
             if (mc.PoseLevel > 0f) dragger.CurrentManagedState.ChangePose(-mc.PoseLevel);
-            if (!ModUtils.IsEmptyHanded(dragger)) dragger.SetEmptyHands(null);
+            if (!PlayerUtils.IsEmptyHanded(dragger)) dragger.SetEmptyHands(null);
 
             _dragStartTime = Time.time;
             _snagSince = -1f;
@@ -290,11 +303,11 @@ namespace KeepMeAlive.Gameplay.Dragging
 
             // Took anything but the sidearm into their hands (it needs only the right; the left keeps the body):
             // weapon, grenade, knife, meds.
-            bool empty = ModUtils.IsEmptyHanded(dragger) || HoldsSidearm(dragger);
+            bool empty = PlayerUtils.IsEmptyHanded(dragger) || HoldsSidearm(dragger);
             if (!_handsSettled) _handsSettled = empty || !settling;
             if (_handsSettled && !empty) return "hands";
 
-            Vector3 toBody = revivee.Position - dragger.Position;
+            Vector3 toBody = BodyPosition(revivee) - dragger.Position;
             toBody.y = 0f;
             if (toBody.sqrMagnitude > 0.25f)
             {
@@ -322,7 +335,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             bool held = TryGetLocalSession(out var session) && session.IsHeld;
             return $"stage {(TryGetLocalSession(out var s) ? s.Current.ToString() : "none")} held={held} for {Time.time - _dragStartTime:F2}s | " +
                 $"dragger {HandTrace.V(dragger.Position)} look {mc.Rotation.x:F0} pose {mc.PoseLevel:F2} prone={mc.IsInPronePose} " +
-                $"emptyHands={ModUtils.IsEmptyHanded(dragger)} sidearm={HoldsSidearm(dragger)} | " +
+                $"emptyHands={PlayerUtils.IsEmptyHanded(dragger)} sidearm={HoldsSidearm(dragger)} | " +
                 $"revivee root {HandTrace.V(revivee.Position)} {HandTrace.Cm(flat)} away bearing {bearing:F0} off look {off:F0} (turned check {(flat * flat > 0.25f ? "on" : "off")}, " +
                 $"limit {MaxTurnAwayDegrees:F0}, counts {Mathf.Min(off, 180f - off):F0}) | ragdoll chest {chest} | rolled={BodyRagdoll.HasRolled(revivee.ProfileId)}";
         }
@@ -359,6 +372,8 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             _pullOffset = 0f;
             _declareFor = null;
+            _traceHasRoot = false;
+            _traceRoot = Vector3.zero;
             EndLocalDraggerSession();
         }
 
@@ -390,7 +405,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             if (st != null && st.IsBeingDragged) ValidateDrag(player, st);
 
             bool dragged = st != null && st.IsBeingDragged && st.State == RMState.BleedingOut;
-            Player dragger = dragged ? ModUtils.GetPlayerById(st.CurrentDraggerId) : null;
+            Player dragger = dragged ? PlayerUtils.GetPlayerById(st.CurrentDraggerId) : null;
 
             DragSession session = null;
             if (dragger != null)
@@ -405,7 +420,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             // The ragdoll of the body: every peer's copy of it, the owner's own included. A dead dragger holds nothing;
             // the owner's release follows a round trip later. Dragged as well as limp: the owner's limp flag can arrive a
             // resync after the drag claim.
-            var hold = session != null && session.Dragger.HealthController.IsAlive ? session : null;
+            var hold = session != null && PlayerUtils.IsAlive(session.Dragger) ? session : null;
             if (player.IsYourPlayer && st != null && st.IsCritical && player.MovementContext != null) CachePullOffset(player);
             BodyRagdoll.Sync(player, dragged || DownedRagdollController.WantsRagdoll(st), hold);
             if (!player.IsYourPlayer) return;
@@ -445,7 +460,7 @@ namespace KeepMeAlive.Gameplay.Dragging
         {
             var mc = revivee.MovementContext;
 
-            if (dragger == null || !dragger.HealthController.IsAlive)
+            if (!PlayerUtils.IsAlive(dragger))
             {
                 // Dragger left or died: only the body's owner announces it so exactly one release is sent, and puts the
                 // body down from its own ragdoll of it (the dragger can no longer).
@@ -511,14 +526,14 @@ namespace KeepMeAlive.Gameplay.Dragging
         // The game's own check for turning while prone (would the body swing into a wall or off a ledge).
         // While the body is a ragdoll its spine is out from under the root, so the root itself is the pivot.
         private static bool CanRotateProne(Player player, MovementContext mc, float deltaYaw) =>
-            mc.IsAbleToRotateProne(Vector3.zero, deltaYaw, Quaternion.Euler(0f, 2f * deltaYaw, 0f),
-                BodyRagdoll.IsPhysical(player.ProfileId) ? player.Transform.Original : player.PlayerBones.Spine1, out _);
+            PlayerUtils.CanRotateProne(mc, deltaYaw,
+                BodyRagdoll.IsPhysical(player.ProfileId) ? player.Transform.Original : PlayerUtils.GetSpine1(player));
 
         private static void RotateBody(MovementContext mc, float deltaYaw)
         {
             Vector2 look = mc.Rotation;
             mc.Rotation = new Vector2(look.x + deltaYaw, look.y);
-            mc.ApplyRotation(Quaternion.AngleAxis(deltaYaw, Vector3.up) * mc.TransformRotation);
+            PlayerUtils.RotateBodyYaw(mc, deltaYaw);
         }
 
         // Distance from the player origin to the chest bone, along the body.
@@ -592,8 +607,8 @@ namespace KeepMeAlive.Gameplay.Dragging
                 : st.LivesRemaining < cost ? Hud.StripState.NoLives
                 : Hud.StripState.Available;
 
-            // The cost is only said when it can't be paid.
-            Hud.SetDraggerStrip(state, state == Hud.StripState.NoLives ? cost : 0, Hud.InteractKeyName());
+            // The cost is in the downed teammate's lives.
+            Hud.SetDraggerStrip(state, cost, Hud.InteractKeyName());
         }
 
         //====================[ Dragger: Release ]====================
@@ -610,9 +625,9 @@ namespace KeepMeAlive.Gameplay.Dragging
             UpdateReviveStrip(dragger);
 
             var reviveeState = RMSession.GetPlayerState(_draggingId);
-            var revivee = ModUtils.GetPlayerById(_draggingId);
+            var revivee = PlayerUtils.GetPlayerById(_draggingId);
 
-            bool gone = revivee == null || !revivee.HealthController.IsAlive;
+            bool gone = !PlayerUtils.IsAlive(revivee);
             if (gone || reviveeState.CurrentDraggerId != dragger.ProfileId
                 || DragEnded(reviveeState))
             {
@@ -628,14 +643,14 @@ namespace KeepMeAlive.Gameplay.Dragging
                 return;
             }
 
-            if (RMSession.IsPlayerCritical(dragger.ProfileId) || !dragger.HealthController.IsAlive)
+            if (!PlayerUtils.IsAliveAndStanding(dragger))
             {
                 StopDrag(dragger, "dragger-downed");
                 return;
             }
 
             string reason;
-            if ((dragger.Position - revivee.Position).sqrMagnitude > MaxLeashDistance * MaxLeashDistance) reason = "leash";
+            if ((dragger.Position - BodyPosition(revivee)).sqrMagnitude > MaxLeashDistance * MaxLeashDistance) reason = "leash";
             // The pickup locks the stance and hands; the rest is checked once the body is lifted.
             else if (!IsLocalHoldingBody) return;
             // The body rolled out of the dragger's hands, as their own ragdoll of it shows.
@@ -643,7 +658,10 @@ namespace KeepMeAlive.Gameplay.Dragging
             else reason = IsSnagged(revivee) ? "snagged" : BrokenStance(dragger, revivee);
             if (reason == null) return;
 
-            StopDrag(dragger, reason, notify: true);
+            // Standing, drawing or turning away is the dragger's own doing (the drag hint says so); only a drop they
+            // didn't choose is told.
+            bool notify = reason == "leash" || reason == "rolled" || reason == "snagged";
+            StopDrag(dragger, reason, notify);
         }
     }
 }

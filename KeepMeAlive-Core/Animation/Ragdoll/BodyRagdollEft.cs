@@ -103,7 +103,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         // Every bone's local pose as EFT's animation left it.
         private static void CaptureRest(Player player, Session session)
         {
-            var pelvis = player.PlayerBones.Pelvis.Original;
+            var pelvis = PlayerUtils.GetPelvis(player);
             foreach (var t in pelvis.parent.GetComponentsInChildren<Transform>(true))
             {
                 if (!t.name.StartsWith(BoneNames.Prefix, StringComparison.Ordinal)) continue;

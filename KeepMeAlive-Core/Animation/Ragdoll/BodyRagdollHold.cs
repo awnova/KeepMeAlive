@@ -167,13 +167,8 @@ namespace KeepMeAlive.Animation.Ragdoll
         }
 
         //====================[ Overlap Managers Ignore Each Other ]====================
-        // While a body is held, the dragger's and the body's PlayerOverlapManager (POM) ignore each other's controller colliders. A
-        // POM pushes its player out of Player-layer colliders by the player's head and camera colliders every move
-        // (LayersMaskController.PlayerCollisionTestMask includes the Player layer) and the result is added to the motion after the
-        // animation has been read (MovementContext.LimitMotionXZ). The held body's upright capsule is on the Player layer about
-        // 0.8-1.0 m from the dragger, where looking down swings their head and camera colliders into it, so the dragger was pushed
-        // backwards with no input, and kept being as the body followed the hold (log 2026-10-18, confirmed fixed in game).
-        // A POM keeps its own ignore list (IgnoreCollider); the character controller's and Unity's are separate and did nothing here.
+        // While held, each player's overlap manager ignores the other player's controller colliders.
+        // This prevents their movement collision checks from pushing them apart.
         private const int MaxIgnoreTries = 30;
 
         private static readonly System.Reflection.FieldInfo ControllerColliders =

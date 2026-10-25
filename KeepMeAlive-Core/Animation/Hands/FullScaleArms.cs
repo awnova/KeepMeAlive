@@ -15,9 +15,7 @@ namespace KeepMeAlive.Animation.Hands
     // Only the local player in first person is squashed: everyone else's skeleton is seen in third person, at full size.
     internal static class FullScaleArms
     {
-        // How fast the arms grow back (scale per second) on top of the game's own easing, which alone takes about a second and a half
-        // (Lerp at 2/s): the drag's hands set off 0.3 s after the pickup begins and were still at 0.81 then (log, 2026-10-15), so
-        // they fell short. From 0.65 this is full size within the dragger's crouch.
+        // Extra scale per second, on top of the game's easing, while restoring the arms to full size.
         private const float GrowRate = 1.25f;
 
         // Who wants the local player's arms at full size (a drag's arms, a defibrillator sequence).
@@ -60,7 +58,7 @@ namespace KeepMeAlive.Animation.Hands
 
         // How far the player's arms have grown back to full size (1 once they have; always 1 outside first person).
         public static float Scale(Player player) =>
-            player != null && player.IsYourPlayer && player.FirstPersonPointOfView ? player.RibcageScaleCurrent : 1f;
+            PlayerUtils.IsFirstPersonLocal(player) ? player.RibcageScaleCurrent : 1f;
 
         // Raid boundary: the local player can outlive the scene transition, so restore EFT's depth compensation
         // before dropping the owners that were keeping their arms at full scale.

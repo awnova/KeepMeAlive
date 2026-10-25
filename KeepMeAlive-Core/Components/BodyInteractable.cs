@@ -38,6 +38,8 @@ namespace KeepMeAlive.Components
         private GamePlayerOwner _viewerOwner;
         private int _shownSignature;
         private float _nextSignaturePoll;
+        private float _nextInteractablePoll;
+        private bool _needsTeamHeal;
         private const float SignaturePollInterval = 0.25f;
 
 
@@ -67,7 +69,7 @@ namespace KeepMeAlive.Components
 
             // Bots never expose revival/team-heal interactables, and a dead teammate's corpse
             // (same GameObject) must fall back to vanilla looting.
-            if (Revivee.IsAI || Revivee.AIData?.IsAI == true || Revivee.HealthController == null || !Revivee.HealthController.IsAlive)
+            if (!PlayerUtils.IsAliveHuman(Revivee))
             {
                 Destroy(gameObject);
                 return;
@@ -81,7 +83,21 @@ namespace KeepMeAlive.Components
                 return;
             }
 
-            SetCollidersEnabled(true);
+            RMSession.TryGetPlayerState(Revivee.ProfileId, out var st);
+            bool downedInteractable = st != null && st.State == RMState.BleedingOut && !st.IsBeingDragged;
+            if (!downedInteractable && Time.time >= _nextInteractablePoll)
+            {
+                _nextInteractablePoll = Time.time + SignaturePollInterval;
+                _needsTeamHeal = Cfg.TeamHealing.Enabled && (st == null || !st.IsCritical) && PatientNeeds.NeedsAny(Revivee);
+            }
+
+            bool hasInteractions = downedInteractable || ((st == null || !st.IsCritical) && _needsTeamHeal);
+            SetCollidersEnabled(hasInteractions);
+            if (!hasInteractions)
+            {
+                ClearLookHint();
+                return;
+            }
 
             UpdateLookHint();
 
@@ -89,7 +105,8 @@ namespace KeepMeAlive.Components
             if (!TeamHealWheel.IsOpenFor(Revivee.ProfileId)) RefreshListIfActionsChanged();
         }
 
-        // The bottom-strip banner while the local player looks at this body: what a tap and a hold of interact do.
+        // The bottom-strip banner while the local player looks at this body: what a tap and a hold of interact do, and the
+        // inventory key's loot.
         private bool _hintShown;
         private float _nextHintRefresh;
 
@@ -102,30 +119,24 @@ namespace KeepMeAlive.Components
                 ClearLookHint();
                 return;
             }
-            // The hint describes Support only: blank while another entry (Loot) is the highlighted one.
-            // Checked every frame and outside the throttle so scrolling back restores it at once.
-            var selected = _viewerOwner.AvailableInteractionState.Value?.SelectedAction;
-            if (selected != null && selected.Name != PlayerFacingMessages.Interaction.SupportAction)
-            {
-                ClearLookHint();
-                _nextHintRefresh = 0f;
-                return;
-            }
 
             if (Time.time < _nextHintRefresh) return;
             _nextHintRefresh = Time.time + SignaturePollInterval;
 
             RMSession.TryGetPlayerState(Revivee.ProfileId, out var st);
-            bool offered = st != null && !RMSession.IsPlayerCritical(viewer.ProfileId)
+            bool support = st != null && !RMSession.IsPlayerCritical(viewer.ProfileId)
                            && st.State == RMState.BleedingOut && !st.IsBeingDragged && !st.IsBeingRevived && !st.IsSelfReviving
                            && !CrouchHoldState.IsActive(viewer);
-            if (!offered)
+            bool loot = CanLoot(viewer);
+            if (!support && !loot)
             {
                 ClearLookHint();
                 return;
             }
 
-            Hud.SetLookHint(DownedDragController.CanStartDrag(viewer, Revivee, st), CanTeamRevive(viewer, st));
+            int cost = 0;
+            var revive = support ? ReviveHint(viewer, Revivee, st, out cost) : Hud.StripState.Hidden;
+            Hud.SetLookHint(support && DownedDragController.CanStartDrag(viewer, Revivee, st), revive, cost, loot);
             _hintShown = true;
         }
 
@@ -191,7 +202,7 @@ namespace KeepMeAlive.Components
             if (player == null) yield break;
 
             // Confirm the player type and owner before attaching the interactable.
-            if (player.IsYourPlayer || player.IsAI || player.AIData?.IsAI == true) yield break;
+            if (player.IsYourPlayer || !PlayerUtils.IsHuman(player)) yield break;
 
             // Another attach may have finished during the wait.
             if (player.gameObject.GetComponentInChildren<BodyInteractable>() != null) yield break;
@@ -327,12 +338,31 @@ namespace KeepMeAlive.Components
         internal static ReviveSource SourceFor(Player reviver, RMPlayer reviveeState) =>
             RevivePacketHandlers.TeamSourceFor(reviveeState, reviver.ProfileId);
 
-        internal static bool CanTeamRevive(Player reviver, RMPlayer reviveeState)
+        internal static bool CanTeamRevive(Player reviver, Player revivee, RMPlayer reviveeState) =>
+            ReviveHint(reviver, revivee, reviveeState, out _) == Hud.StripState.Available;
+
+        // What the look hint shows for the revive: Hidden when it isn't offered here at all, otherwise Available or why it
+        // can't be done (NeedsStim, NeedsDefib, NoLives). cost is in the downed teammate's lives.
+        internal static Hud.StripState ReviveHint(Player reviver, Player revivee, RMPlayer reviveeState, out int cost)
         {
+            cost = 0;
+            if (reviver == null || revivee == null || reviveeState == null) return Hud.StripState.Hidden;
+            if (reviveeState.State != RMState.BleedingOut) return Hud.StripState.Hidden;
+            if (reviveeState.IsBeingRevived || reviveeState.IsSelfReviving || reviveeState.SelfReviveAwaitingAuth) return Hud.StripState.Hidden;
+            if (BodyRagdoll.IsFalling(revivee.ProfileId)) return Hud.StripState.Hidden;
+            if (RMSession.IsPlayerCritical(reviver.ProfileId)) return Hud.StripState.Hidden;
+            if (reviver.MovementContext != null && reviver.MovementContext.IsInPronePose) return Hud.StripState.Hidden;
+            if (!DownedDragController.IsInRange(reviver, revivee)) return Hud.StripState.Hidden;
+
             var source = SourceFor(reviver, reviveeState);
-            return RevivePolicy.IsEnabled(source)
-                   && RevivePolicy.HasRequiredItem(source, reviver)
-                   && reviveeState.LivesRemaining >= RevivePolicy.LivesCost(source);
+            if (!RevivePolicy.IsEnabled(source)) return Hud.StripState.Hidden;
+            cost = RevivePolicy.LivesCost(source);
+            switch (RevivePolicy.MissingItem(source, reviver))
+            {
+                case RevivePolicy.RequiredItem.Stim: return Hud.StripState.NeedsStim;
+                case RevivePolicy.RequiredItem.Defib: return Hud.StripState.NeedsDefib;
+            }
+            return reviveeState.LivesRemaining < cost ? Hud.StripState.NoLives : Hud.StripState.Available;
         }
 
         public void OnSupport(GamePlayerOwner owner)
@@ -352,24 +382,24 @@ namespace KeepMeAlive.Components
             RequestRevive(owner);
         }
 
-        // Starts the revive hold, or says why it can't be done.
+        // Starts the revive hold. A missing item or too few lives is already on the look hint or the dragger's strip.
         public void RequestRevive(GamePlayerOwner owner)
         {
             if (Revivee == null || owner?.Player == null || RMSession.IsPlayerCritical(owner.Player.ProfileId)) return;
 
             var st = RMSession.GetPlayerState(Revivee.ProfileId);
             if (st.State != RMState.BleedingOut) return;
+            if (st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth) return;
+            if (!DownedDragController.IsLocalHoldingBody)
+            {
+                if (BodyRagdoll.IsFalling(Revivee.ProfileId)) return;
+                if (owner.Player.MovementContext != null && owner.Player.MovementContext.IsInPronePose) return;
+                if (!DownedDragController.IsInRange(owner.Player, Revivee)) return;
+            }
             var source = SourceFor(owner.Player, st);
-            int cost = RevivePolicy.LivesCost(source);
             if (!RevivePolicy.IsEnabled(source))
                 VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.Disabled);
-            else if (!RevivePolicy.HasRequiredItem(source, owner.Player))
-                VFX_UI.Text(Color.red, RevivePolicy.MissingItem(source, owner.Player) == RevivePolicy.RequiredItem.Stim
-                    ? PlayerFacingMessages.Revive.NoStimFound
-                    : PlayerFacingMessages.Revive.NoDefibFound);
-            else if (st.LivesRemaining < cost)
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.NotEnoughLives(cost));
-            else
+            else if (RevivePolicy.HasRequiredItem(source, owner.Player) && st.LivesRemaining >= RevivePolicy.LivesCost(source))
                 OnRevive(owner, source);
         }
 
@@ -397,7 +427,7 @@ namespace KeepMeAlive.Components
                 return;
             }
 
-            Hud.ShowHold(Hud.HoldKind.ReviveTeammate, holdTime, ModUtils.GetPlayerDisplayName(Revivee.ProfileId));
+            Hud.ShowHold(Hud.HoldKind.ReviveTeammate, holdTime, PlayerUtils.GetPlayerDisplayName(Revivee.ProfileId));
             // Claims locally too (no loopback), so this machine also drops any drag of the body.
             FikaBridge.ClaimTeamHelp(Revivee.ProfileId, owner.Player.ProfileId);
             // The defibrillator comes out for the hold (the weapon comes back when it ends), only with the claim:
@@ -427,9 +457,8 @@ namespace KeepMeAlive.Components
             var actions = new AvailableInteractionState();
 
             if (Revivee == null || owner?.Player == null) return actions;
-            if (Revivee.IsAI || Revivee.AIData?.IsAI == true) return actions;
             // Empty result -> TryRouteActions returns false -> vanilla corpse interactions.
-            if (Revivee.HealthController == null || !Revivee.HealthController.IsAlive) return actions;
+            if (!PlayerUtils.IsAliveHuman(Revivee)) return actions;
             if (RMSession.IsPlayerCritical(owner.Player.ProfileId)) return actions;
 
             RMSession.TryGetPlayerState(Revivee.ProfileId, out var reviveeState);
@@ -451,18 +480,9 @@ namespace KeepMeAlive.Components
                 {
                     Action = () => OnSupport(owner),
                     Name = PlayerFacingMessages.Interaction.SupportAction,
-                    Disabled = !DownedDragController.CanStartDrag(owner.Player, Revivee, reviveeState) && !CanTeamRevive(owner.Player, reviveeState)
+                    Disabled = !DownedDragController.CanStartDrag(owner.Player, Revivee, reviveeState) && !CanTeamRevive(owner.Player, Revivee, reviveeState)
                 });
-
-                if (Cfg.TeamHealing.AllowLootDownedPlayers)
-                {
-                    actions.Actions.Add(new InteractionAction
-                    {
-                        Action = () => OnLootDowned(owner),
-                        Name = PlayerFacingMessages.Interaction.LootAction,
-                        Disabled = false
-                    });
-                }
+                // Looting is on the inventory key (DownedLootInventoryKeyPatch), not in this menu.
             }
             else if (Cfg.TeamHealing.Enabled && PatientNeeds.NeedsAny(Revivee))
             {
@@ -478,7 +498,18 @@ namespace KeepMeAlive.Components
             return actions;
         }
 
+        // Whether the looter's inventory key opens this teammate's loot instead of their own inventory. Not while the body is
         //====================[ Loot Downed ]====================
+        // in someone's hands, the looter is holding one or mid-hold, or the team-heal wheel is open (its keys close it).
+        internal bool CanLoot(Player looter)
+        {
+            if (!Cfg.TeamHealing.AllowLootDownedPlayers || _isLootScreenOpen) return false;
+            if (Revivee == null || looter == null || !looter.HealthController.IsAlive || !PlayerUtils.IsAliveHuman(Revivee)) return false;
+            if (RMSession.IsPlayerCritical(looter.ProfileId) || CrouchHoldState.IsActive(looter)) return false;
+            if (TeamHealWheel.IsOpen || DownedDragController.IsLocalHoldingBody) return false;
+            return RMSession.TryGetPlayerState(Revivee.ProfileId, out var st) && st.State == RMState.BleedingOut && !st.IsBeingDragged;
+        }
+
         public void OnLootDowned(GamePlayerOwner owner)
         {
             if (Revivee == null || owner?.Player == null || _isLootScreenOpen) return;
@@ -587,7 +618,6 @@ namespace KeepMeAlive.Components
                 else
                 {
                     FikaBridge.ReleaseTeamHelp(targetId, reviverId);
-                    VFX_UI.Text(Color.yellow, PlayerFacingMessages.Interaction.ReviveCancelled);
                 }
             }
         }

@@ -48,19 +48,21 @@ namespace KeepMeAlive.Gameplay.Downed
         // Attaches a BodyInteractable to every already-spawned remote human at raid start.
         // Called from FikaRaidLifecycle.OnRaidStarted (skipped entirely on a headless host,
         // which has no human at the keyboard to revive/heal/loot anyone).
+        private static readonly List<Player> HumanBuffer = new List<Player>();
+
         public static void AttachToRemoteHumans()
         {
-            if (!global::Fika.Core.Main.Components.CoopHandler.TryGetCoopHandler(out var coopHandler))
+            if (!FikaBridge.TryGetHumanPlayers(HumanBuffer))
             {
                 Plugin.LogSource.LogWarning("[AttachToRemoteHumans] CoopHandler not available");
                 return;
             }
 
             _raidStarted = true;
-            RevivalDebugLog.LogDebug($"[AttachToRemoteHumans] HumanPlayers count={coopHandler.HumanPlayers.Count}");
-            foreach (var player in coopHandler.HumanPlayers)
+            RevivalDebugLog.LogDebug($"[AttachToRemoteHumans] HumanPlayers count={HumanBuffer.Count}");
+            foreach (var player in HumanBuffer)
             {
-                if (player is not global::Fika.Core.Main.Players.ObservedPlayer)
+                if (!FikaBridge.IsObservedPeer(player))
                 {
                     RevivalDebugLog.LogDebug($"[AttachToRemoteHumans] SKIP local player {player.Id} ({player.GetType().Name})");
                     continue;
@@ -74,10 +76,10 @@ namespace KeepMeAlive.Gameplay.Downed
         // Per tick for every non-AI player: a remote human that spawned after the raid started has no interactable.
         public static void EnsureAttached(Player player)
         {
-            if (!_raidStarted || player == null || player.IsYourPlayer || player.IsAI) return;
-            if (!(player is global::Fika.Core.Main.Players.ObservedPlayer)) return;
+            if (!_raidStarted || player == null || player.IsYourPlayer || !PlayerUtils.IsHuman(player)) return;
+            if (!FikaBridge.IsObservedPeer(player)) return;
             if (string.IsNullOrEmpty(player.ProfileId) || Attempted.TryGetValue(player.ProfileId, out var tried) && ReferenceEquals(tried, player)) return;
-            if (player.HealthController == null || !player.HealthController.IsAlive) return;
+            if (!PlayerUtils.IsAlive(player)) return;
 
             AttachToPlayer(player);
         }

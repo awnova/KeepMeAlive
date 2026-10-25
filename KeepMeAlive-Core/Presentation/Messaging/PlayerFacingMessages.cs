@@ -23,11 +23,13 @@ namespace KeepMeAlive.Presentation.Messaging
             public const string SelfRevive = "Self-revive";
             public const string Revive = "Revive";
             public const string Drag = "Drag";
+            public const string Loot = "Loot";
             public const string Tap = "Tap";
             public const string GiveUp = "Give up";
             public const string Hold = "Hold";
             public const string WaitForTeammate = "Wait for teammate";
             public const string NeedsStim = "Needs stim";
+            public const string NeedsDefib = "Needs defib";
 
             public const string Spectate = "Spectate";
             public const string Spectating = "Spectating";
@@ -43,7 +45,7 @@ namespace KeepMeAlive.Presentation.Messaging
 
             public static string LivesLeft(int count) => $"{count} {LifeWord(count)} left";
             public static string Cost(int count) => $"-{count} {LifeWord(count)}";
-            public static string NeedsLives(int count) => $"Needs {count} {LifeWord(count)}";
+            public const string NotEnoughLives = "Not enough lives";
         }
 
         //====================[ Interactions ]====================
@@ -52,9 +54,7 @@ namespace KeepMeAlive.Presentation.Messaging
             public const string CannotReviveWhileMoving = "You can't revive a player while moving";
             // The one menu entry for a downed teammate: tap drags (or lets go), hold revives.
             public const string SupportAction = "Support";
-            public const string LootAction = "Loot";
             public const string ReviveNoLongerPossible = "Revive no longer possible";
-            public const string ReviveCancelled = "Revive cancelled!";
             // The one menu entry for a standing, hurt teammate: opens the team-heal wheel.
             public const string InteractAction = "Interact";
 
@@ -67,9 +67,6 @@ namespace KeepMeAlive.Presentation.Messaging
         internal static class TeamHeal
         {
             public const string PatientUnavailable = "Patient is no longer available";
-            public const string HealingTeammate = "Healing teammate...";
-            public const string YouWereHealed = "You were healed!";
-            public const string HealSucceeded = "Teammate healed";
             public const string HealNoResponse = "Heal not confirmed by teammate";
             public const string ItemUnavailable = "Med item no longer available";
             public const string PatientBusy = "Teammate could not use the item";
@@ -107,30 +104,12 @@ namespace KeepMeAlive.Presentation.Messaging
         //====================[ Revive Flow ]====================
         internal static class Revive
         {
-            public const string NoDefibFound = "No defib found! Unable to revive!";
-            public const string NoStimFound = "No stim found! Unable to revive!";
             public const string MissingStimCanceled = "Stim missing. Revive canceled.";
             public const string Disabled = "This kind of revive is disabled";
-            public const string SelfReviveCanceled = "Self-revive canceled";
             public const string MissingDefibCanceled = "Defib missing. Revive canceled.";
-            public static string NotEnoughLives(int cost) =>
-                $"Not enough lives to self-revive (Costs {cost})";
         }
 
         //====================[ Revive Complete ]====================
-        internal static class ReviveComplete
-        {
-            public const string LocalSelf = "Stim used successfully! You are temporarily invulnerable.";
-            public const string LocalTeam = "Revived by teammate! You are temporarily invulnerable.";
-
-            public static string ObserverBySource(string playerDisplay, ReviveSource source)
-            {
-                return source == ReviveSource.Self
-                    ? $"{playerDisplay} self-revived"
-                    : $"{playerDisplay} was revived";
-            }
-        }
-
         //====================[ Revive Denials ]====================
         internal static class ReviveDenied
         {
@@ -138,30 +117,20 @@ namespace KeepMeAlive.Presentation.Messaging
             public const string TeamFallback = "Revive denied";
             public const string SelfFallback = "Revive denied by server";
             public const string Cooldown = "Player on cooldown";
-            public const string OutOfLives = "Out of lives - can't be revived again";
+            public const string OutOfLives = "Out of lives";
         }
 
         //====================[ Network Revive ]====================
         internal static class NetworkRevive
         {
-            public static string TeamHelpedBy(string reviverName, string reviveeName) =>
-                $"{reviverName} is helping {reviveeName}";
             public static string TeamCancelledBy(string reviverName) =>
                 $"{reviverName} cancelled revival";
-
-            public static string SelfReviving(string display) =>
-                $"{display} is self-reviving";
-
-            public static string TeamReviving(string reviverName, string reviveeName) =>
-                $"{reviverName} is reviving {reviveeName}";
         }
 
         //====================[ Downed UI ]====================
         internal static class Downed
         {
-            public const string DownedBanner = "DOWNED";
             public const string ReviverTimedOut = "Reviver disconnected or timed out.";
-            public const string GiveUpCanceled = "Give up canceled";
 
             // Shown to everyone else when a teammate goes down.
             public static string TeammateDown(string name) => $"{name} is down!";
@@ -177,13 +146,6 @@ namespace KeepMeAlive.Presentation.Messaging
         }
 
         //====================[ Death ]====================
-        internal static class Death
-        {
-            public const string HeadshotCritical = "Headshot – critical";
-            public const string HeadshotKilled = "Headshot – killed instantly";
-            public const string YouDied = "You died";
-        }
-
         //====================[ Spectate ]====================
         internal static class Spectate
         {

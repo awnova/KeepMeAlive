@@ -12,12 +12,14 @@ namespace KeepMeAlive.Runtime.Lifecycle
         // for the arm IK every frame.
         public static void DetachWeaponAnimation(Player player)
         {
+            if (player?.MovementContext == null || player.ProceduralWeaponAnimation == null) return;
             player.MovementContext.PhysicalConditionChanged -= player.ProceduralWeaponAnimation.PhysicalConditionUpdated;
             player.ProceduralWeaponAnimation.OnPreCollision -= player.IkStoreRaw;
         }
 
         public static void AttachWeaponAnimation(Player player)
         {
+            if (player?.MovementContext == null || player.ProceduralWeaponAnimation == null) return;
             DetachWeaponAnimation(player);
             player.MovementContext.PhysicalConditionChanged += player.ProceduralWeaponAnimation.PhysicalConditionUpdated;
             player.ProceduralWeaponAnimation.OnPreCollision += player.IkStoreRaw;
@@ -25,11 +27,15 @@ namespace KeepMeAlive.Runtime.Lifecycle
 
         // The movement-state handler (pedometer, state sounds). Only for an observed player: on the local player
         // Fika swaps EFT's for its own (SetupFikaAudio), so putting EFT's back would double every step.
-        public static void DetachStateChanged(Player player) =>
-            player.MovementContext.OnStateChanged -= player.MovementContextOnStateChanged;
+        public static void DetachStateChanged(Player player)
+        {
+            if (player?.MovementContext != null)
+                player.MovementContext.OnStateChanged -= player.MovementContextOnStateChanged;
+        }
 
         public static void AttachStateChanged(Player player)
         {
+            if (player?.MovementContext == null) return;
             DetachStateChanged(player);
             player.MovementContext.OnStateChanged += player.MovementContextOnStateChanged;
         }

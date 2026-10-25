@@ -95,22 +95,20 @@ namespace KeepMeAlive.Gameplay.Medical
             {
                 if (healer == null || item == null) return false;
 
-                if (patient == null || patient.HealthController == null || !patient.HealthController.IsAlive
-                    || RMSession.IsPlayerCritical(patient.ProfileId))
+                if (!PlayerUtils.IsAliveAndStanding(patient))
                 {
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.PatientUnavailable);
                     return false;
                 }
 
                 // The item may have been used, moved or sent since the wheel listed it.
-                if (IsReserved(item) || ModUtils.IsItemInUse(healer, item) || !ModUtils.IsTeamHealItemValid(healer, item, out _))
+                if (IsReserved(item) || InventoryUtils.IsItemInUse(healer, item) || !InventoryUtils.IsTeamHealItemValid(healer, item, out _))
                 {
                     VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.ItemUnavailable);
                     return false;
                 }
 
                 Reservations[item.Id] = new Reservation { Expiry = Time.time + ReservationTimeoutSeconds };
-                VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.HealingTeammate);
 
                 // Broadcast; the patient's machine applies it and answers with TeamHealResultPacket.
                 FikaBridge.SendTeamHealPacket(patient.ProfileId, healer.ProfileId, item.Id);
@@ -138,7 +136,7 @@ namespace KeepMeAlive.Gameplay.Medical
             }
 
             // A hold the healer started meanwhile (a revive) keeps its own bar.
-            var healer = ModUtils.GetYourPlayer();
+            var healer = PlayerUtils.GetYourPlayer();
             if (useSeconds <= 0f || CrouchHoldState.IsActive(healer)) return;
             var item = MedCatalog.Find(healer, itemId);
             _useBar = Hud.ShowHold(Hud.HoldKind.Heal, useSeconds, item?.LocalizedShortName());
@@ -158,8 +156,8 @@ namespace KeepMeAlive.Gameplay.Medical
                 _useBarItemId = null;
             }
 
-            if (completed) VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.HealSucceeded);
-            else VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealInterrupted);
+            // A completed use is told by the bar running out.
+            if (!completed) VFX_UI.Text(Color.yellow, PlayerFacingMessages.TeamHeal.HealInterrupted);
         }
 
         //====================[ Reservations ]====================

@@ -212,6 +212,7 @@ namespace KeepMeAlive.Gameplay.Downed
         // Puts the resting body's pelvis (level) on a place and turns it to a facing; the ground follow keeps the height.
         private void PlaceAt(Vector3 pelvis, float facingYaw)
         {
+            if (_player != null) _ground.RootY = _player.Position.y;
             Quaternion facing = global::KeepMeAlive.Animation.Shared.MathUtil.Yaw(facingYaw);
             _ground.SurfaceDirection = facing * Quaternion.Inverse(_facing) * _ground.SurfaceDirection;
             _facing = facing;
@@ -551,16 +552,25 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 _stimNeedle = Needle.In;
                 DownedVoiceController.OnStimNeedle(_player);
+                PlayInjectSound();
             }
             else if (segment == SelfStimSequence.Segment.PutAway && _stimNeedle != Needle.Withdrawn)
             {
+                if (_stimNeedle == Needle.Out) PlayInjectSound();
                 _stimNeedle = Needle.Withdrawn;
                 DownedVoiceController.OnStimNeedle(_player);
             }
             return true;
         }
 
+        // The needle goes in: the injection at the hand holding the pen.
         //====================[ Root Anchor ]====================
+        private void PlayInjectSound()
+        {
+            var palm = Find(BoneNames.RightPalm);
+            StimSounds.PlayInject(palm != null ? palm.position : _pelvis.position);
+        }
+
         // The body lies where the player's root is, on every peer. The pose is placed in the world once (from the
         // body it started on) and Fika moves the player's root on its own afterwards, by the owner's knockback or
         // whatever this peer saw of the player, each later than the owner by that peer's own delay: left alone, the
@@ -613,6 +623,8 @@ namespace KeepMeAlive.Gameplay.Downed
             // Nor over the self-stim sequence, nor after its roll put the body down from the root.
             if (_stim != null || _stimPlaced) return;
             if (_player == null || !RMSession.TryGetPlayerState(_player.ProfileId, out var st)) return;
+
+            _ground.RootY = _player.Position.y;
 
             Vector3 want;
             if (st.HasDropRest)
@@ -726,11 +738,9 @@ namespace KeepMeAlive.Gameplay.Downed
             try
             {
                 var player = _player;
-                if (_cameraFailed || player == null || !player.IsYourPlayer || !player.FirstPersonPointOfView || DownedSpectate.IsActive) return;
-                if (!CameraManager.Exist) return;
-                var main = CameraManager.Instance.Camera;
-                if (main == null || (camera != null && camera != main)) return;
-                var head = player.PlayerBones != null && player.PlayerBones.Head != null ? player.PlayerBones.Head.Original : null;
+                if (_cameraFailed || !PlayerUtils.IsFirstPersonLocal(player) || DownedSpectate.IsActive) return;
+                if (!ModUtils.TryGetMainCamera(out var main) || (camera != null && camera != main)) return;
+                var head = PlayerUtils.GetHead(player);
                 if (head == null) return;
                 // The pose lies on its back, but the game still has the player prone: its look would face the ground. So the
                 // view is the head's, as LocalBodyCamera has it for the ragdoll (and kept off walls the fall may carry it through).
@@ -830,9 +840,8 @@ namespace KeepMeAlive.Gameplay.Downed
         // Whether the body is standing or crouched, so a fall would make sense from it.
         public static bool IsUpright(Player player)
         {
-            var bones = player.PlayerBones;
-            Transform pelvis = bones != null && bones.Pelvis != null ? bones.Pelvis.Original : null;
-            Transform head = bones != null && bones.Head != null ? bones.Head.Original : null;
+            Transform pelvis = PlayerUtils.GetPelvis(player);
+            Transform head = PlayerUtils.GetHead(player);
             return pelvis != null && head != null && head.position.y - pelvis.position.y >= MinUprightHeadHeight;
         }
 
@@ -847,16 +856,15 @@ namespace KeepMeAlive.Gameplay.Downed
             var crouch = BakedClip.CrouchFall;
             if (crouch == null || !crouch.SharesRig(stand) || !TryGetScale(player, out float scale)) return stand;
 
-            float height = player.PlayerBones.Pelvis.Original.position.y - player.Transform.position.y;
+            float height = PlayerUtils.GetPelvis(player).position.y - player.Transform.position.y;
             return height < CrouchedHeightShare * stand.FloorHeight * scale ? crouch : stand;
         }
 
         // The yaw that turns the loop (as evaluated in pose) so its spine points the way the body's does now.
         private static Quaternion FacingOf(Player player, ClipRig rig, Quaternion[] pose)
         {
-            var bones = player.PlayerBones;
             Transform pelvis = rig.Pelvis;
-            Transform head = bones.Head.Original;
+            Transform head = PlayerUtils.GetHead(player);
             int p = rig.IndexOf(pelvis);
             Vector3 spine = head.position - pelvis.position;
             // The same spine as the loop's pelvis carries it.

@@ -59,7 +59,11 @@ namespace KeepMeAlive.Patches
             for (int i = 0; i < count; i++)
             {
                 if (best >= 0 && Hits[i].distance >= Hits[best].distance) continue;
-                if (IsProxiedPlayerCapsule(Hits[i].collider) || IsOwnProxy(Hits[i].collider, ray.origin)) continue;
+                var collider = Hits[i].collider;
+                if (IsProxiedPlayerCapsule(collider) || IsOwnProxy(collider, ray.origin)) continue;
+                // Non-player interactables (loot, doors, containers) must respect vanilla LOOT_RAYCAST_DISTANCE.
+                if (Hits[i].distance > settings.LOOT_RAYCAST_DISTANCE
+                    && collider.GetComponent<BodyInteractable.BodyInteractableProxy>() == null) continue;
                 best = i;
             }
 
@@ -110,10 +114,10 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance == null || weapon == null || __instance.IsAI) return true;
+                if (weapon == null || !PlayerUtils.IsHuman(__instance)) return true;
                 if (!RMSession.TryGetPlayerState(__instance.ProfileId, out var st)) return true;
 
-                bool shouldBlock = (st.State is RMState.BleedingOut or RMState.Reviving) && !st.AllowWeaponEquipForReviveAnim;
+                bool shouldBlock = st.IsCritical && !st.AllowWeaponEquipForReviveAnim;
                 if (!shouldBlock) return true;
 
                 RevivalDebugLog.LogDebug($"[DownedWeaponBlock] Blocked weapon proceed for {__instance.ProfileId} in state={st.State}");
@@ -142,11 +146,12 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance?.Player == null) return true;
-                if (!RMSession.TryGetPlayerState(__instance.Player.ProfileId, out var st)) return true;
+                if (!PlayerUtils.TryGetLocalOwnerPlayer(__instance, out var player)) return true;
+                if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return true;
 
+                bool blockUi = SyncedServerConfigStore.Config.Gameplay.Downed.BlockUiWhenDowned;
                 bool block = st.IsSilentInventoryAnimActive
-                             || (st.IsCritical && command == EFT.InputSystem.ECommand.ToggleInventory)
+                             || (st.IsCritical && blockUi && command == EFT.InputSystem.ECommand.ToggleInventory)
                              // The spectate keys (fire, aim, N) are also the game's own.
                              || (DownedSpectate.IsActive && DownedSpectate.BlocksCommand(command));
                 if (!block) return true;
@@ -175,7 +180,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (command != EFT.InputSystem.ECommand.BeginInteracting || __instance?.Player == null) return true;
+                if (command != EFT.InputSystem.ECommand.BeginInteracting || !PlayerUtils.TryGetLocalOwnerPlayer(__instance, out _)) return true;
                 if (!DownedDragController.TryBeginReviveHold(__instance)) return true;
 
                 __result = EFT.InputSystem.InputNode.ETranslateResult.BlockAll;
@@ -203,7 +208,7 @@ namespace KeepMeAlive.Patches
             try
             {
                 var player = __instance?.Player;
-                if (player == null || player.IsAI || !player.IsYourPlayer || !RMSession.IsPlayerCritical(player.ProfileId)) return true;
+                if (!PlayerUtils.IsLocalHuman(player) || !RMSession.IsPlayerCritical(player.ProfileId)) return true;
 
                 RevivalDebugLog.LogDebug($"[DownedApplyItemBlock] Blocked item use for {player.ProfileId}");
                 __result = false;
@@ -229,7 +234,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                var local = ModUtils.GetYourPlayer();
+                var local = PlayerUtils.GetYourPlayer();
                 if (local == null || !RMSession.IsPlayerCritical(local.ProfileId)) return true;
 
                 __result = false;
@@ -255,9 +260,10 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (__instance?.Player == null || !RMSession.IsPlayerCritical(__instance.Player.ProfileId)) return true;
+                if (!SyncedServerConfigStore.Config.Gameplay.Downed.BlockUiWhenDowned) return true;
+                if (!PlayerUtils.TryGetLocalOwnerPlayer(__instance, out var player) || !RMSession.IsPlayerCritical(player.ProfileId)) return true;
 
-                RevivalDebugLog.LogDebug($"[DownedInventoryBlock] Blocked inventory screen for {__instance.Player.ProfileId}");
+                RevivalDebugLog.LogDebug($"[DownedInventoryBlock] Blocked inventory screen for {player.ProfileId}");
                 // Same as the game's own refusal path: run the exit action so callers see the screen closed.
                 exitAction?.Invoke();
                 return false;

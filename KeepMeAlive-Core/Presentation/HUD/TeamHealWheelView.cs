@@ -5,6 +5,7 @@ using EFT;
 using EFT.HealthSystem;
 using EFT.InventoryLogic;
 using EFT.UI.DragAndDrop;
+using KeepMeAlive.Utilities;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -397,31 +398,42 @@ namespace KeepMeAlive.Presentation.HUD
             }
         }
 
+        // The mod's own white glyphs (Resources/Icons), tinted by the slot. Each is read once; a missing one is logged
         //====================[ Category Icons ]====================
-        // The game's own status-effect icons; Health has none, so it uses the HP icon from item tooltips. A missing
-        // sprite leaves the slot without an icon.
+        // and leaves the slot without an icon.
+        private static readonly Dictionary<MedCategory, Sprite> CategorySprites = new Dictionary<MedCategory, Sprite>();
+
         private static Sprite CategoryIcon(MedCategory category)
+        {
+            if (CategorySprites.TryGetValue(category, out var cached)) return cached;
+            var sprite = LoadCategorySprite(category);
+            CategorySprites[category] = sprite;
+            return sprite;
+        }
+
+        private static Sprite LoadCategorySprite(MedCategory category)
         {
             try
             {
-                var icons = EFTHardSettings.Instance?.StaticIcons;
-                if (icons == null) return null;
-                var effects = icons.EffectIcons;
+                string file;
                 switch (category)
                 {
-                    case MedCategory.Bleeds: return effects?.HeavyBleeding;
-                    case MedCategory.Breaks: return effects?.Fracture;
-                    case MedCategory.Comfort: return effects?.Pain;
-                    case MedCategory.Nutrition: return effects?.Dehydration;
-                    case MedCategory.Health:
-                        return icons.HealEffectSprites != null && icons.HealEffectSprites.TryGetValue(EHealthFactorType.Health, out var hp) ? hp : null;
+                    case MedCategory.Bleeds: file = "bleeds"; break;
+                    case MedCategory.Breaks: file = "breaks"; break;
+                    case MedCategory.Health: file = "health"; break;
+                    case MedCategory.Comfort: file = "comfort"; break;
+                    case MedCategory.Nutrition: file = "nutrition"; break;
+                    default: return null;
                 }
+
+                // 256 px art (Build/Tools/HudIcons/shrink_hud_icons.py) drawn at ~66 px: mipmaps and trilinear keep the downscale clean.
+                return EmbeddedData.ReadSprite($"KeepMeAlive.Resources.Icons.{file}_transparent.png", mipmaps: true, FilterMode.Trilinear);
             }
             catch (Exception ex)
             {
                 Plugin.LogSource.LogWarning($"[TeamHealWheelView] category icon for {category} failed: {ex.Message}");
+                return null;
             }
-            return null;
         }
 
         //====================[ Helpers ]====================

@@ -303,7 +303,7 @@ namespace KeepMeAlive.Gameplay.Downed
         // re-adding it would double every step, stop and idle sound.
         public static void ReattachMovementHooks(Player player)
         {
-            if (player.MovementContext == null) return;
+            if (player?.MovementContext == null) return;
             try
             {
                 // ReleaseHand (stationary weapon, ApplyRevivableState) unsubscribes the IK store for good, and the arm

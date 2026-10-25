@@ -4,51 +4,22 @@ using UnityEngine;
 
 namespace KeepMeAlive.Animation.Ragdoll
 {
+    // Each ragdoll joint uses a ConfigurableJoint drive toward the muscle pose. Drive strength is scaled by joint inertia so
     //====================[ BodyRagdoll: Muscles ]====================
-    // Every joint of the ragdoll has a muscle: a motor that PhysX solves inside its own constraint solver, so it is an implicit
-    // spring that stays stable however stiff it is set. The old muscles were torques worked out once a frame outside the solver
-    // and added with AddTorque; stiff ones rang (the arms flipped direction every tick) and every cure for that made the body limp.
-    //
-    // Each motor is a drive-only ConfigurableJoint beside EFT's CharacterJoint on the same pair of bodies: every motion free (the
-    // CharacterJoint keeps the limits), a slerp drive toward identity. It is created while the bones are posed in the muscle pose
-    // (ZeroJointsAtMusclePose), so its zero IS the muscle pose and the target never changes. One pose and one tension, dragged or
-    // let go: gravity, the floor and the dragger's hands are the only things that differ.
-    //
-    // Strength is the group's setting in 1/s^2 (natural frequency squared). The drive works in torque, so it is scaled by the
-    // inertia of everything the joint moves about the joint (worked out once from the bodies' inertia tensors): the same setting
-    // then holds a light forearm and a heavy leg alike. PhysX's own acceleration mode would scale by the child body alone, a small
-    // part of an arm's real load (the "muscles don't pull" bug of 2026-10-13).
-    //
-    // Posture: the neck, the back and the arms also carry tone in proportion to the weight they hold up (a living person's
-    // muscle tone), as
-    // extra stiffness of PostureTone x the load's gravity moment about the joint. A frequency alone cannot hold a short, heavy
-    // lever: the head sags about g / (strength x lever), so at any sane strength it hung on its limits (log 2026-10-19: neck
-    // spring 3.9 N*m/rad against ~4.4 N*m of head; Spine2/Spine3 at 62-83% of their limits). It is still a spring: under its
-    // full load a joint sags about 1/PostureTone rad, and the floor still carries whatever lies on it.
+    // different body parts respond consistently; posture tone helps support the head, back, and arms under gravity.
     internal static partial class BodyRagdoll
     {
+        // Postural tone supports the neck, spine, and arms under gravity. The legs stay relaxed so they can trail on the ground.
         //====================[ Tuning ]====================
-        // Postural tone (1/rad) by group: the load's full gravity moment is met at 1/tone rad of sag (neck ~7, back ~11, arms
-        // ~10 deg). Not the legs: a dragged person's legs lie on the ground and trail, their weight on the heels. With tone the
-        // hip held a whole leg's weight within ~8 deg (spring 331 N*m/rad against ~50 N*m, log 2026-10-19), so the legs rode
-        // with the pelvis like a board, the heels carried almost nothing and slid with no friction. The legs are kept apart by
-        // the spacer colliders (BodyRagdollRig.AddLimbSpacers) instead.
         private const float NeckPostureTone = 8f;
         private const float SpinePostureTone = 5f;
         private const float ArmPostureTone = 6f;
         // The knees only (not the hips): keeps each leg straight and braced like a living person's without lifting the leg's
         // weight off the heels (a calf lying on the floor puts almost no load on the knee, so this adds little stiffness there).
         private const float KneePostureTone = 6f;
-        // Share of the hip's strength that bends the hip forward and back (flexion). Held, the trunk is lifted ~50 deg while the
-        // legs lie on the floor, so the hip sits ~55 deg flexed off the muscle pose; at full strength it then lifted about two
-        // thirds of each leg's weight off the heel (log 2026-10-19: spring 34 N*m/rad x ~1 rad vs a 50 N*m leg), and the heels
-        // slid. Soft in flexion, the leg lies on the floor however the trunk is held; sideways and rolling stay at full strength,
-        // so the legs keep their spread and do not turn in.
+        // Hip flexion stays soft so the legs can rest on the ground while sideways and rolling motion remain supported.
         private const float HipFlexionShare = 0.15f;
-        // Postural tone (1/rad) for the hip sideways and rolling only. A leg lying on the floor swings sideways in the floor's
-        // plane, so this lifts nothing off the heel; it holds the leg in line against the heel's ground friction, which at the
-        // base strength alone (34 N*m/rad against ~45 N*m of heel drag in a turn) let a leg slowly spread or fail to trail
-        // (log 2026-10-19: thigh swing 20-22 deg off the pose). Here the heel's drag moves the leg ~8 deg.
+        // Hip tone resists sideways and rolling motion without lifting the legs off the ground.
         private const float HipSideTone = 6f;
         // The hip joint's flexion axis in the thigh's own frame (EFT's CharacterJoint axis on the thighs).
         private static readonly Vector3 HipFlexionAxis = Vector3.forward;

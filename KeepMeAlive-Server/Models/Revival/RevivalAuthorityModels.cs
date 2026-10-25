@@ -55,6 +55,12 @@ public record RevivalAuthorityResponse
     public RevivalDeniedCode DenialCode { get; init; } = RevivalDeniedCode.None;
     public string Reason { get; init; } = string.Empty;
     public RevivalStateEntry? State { get; init; }
+
+    public static RevivalAuthorityResponse Ok(RevivalStateEntry? state) =>
+        new() { Success = true, State = state is null ? null : state with { } };
+
+    public static RevivalAuthorityResponse Fail(RevivalDeniedCode code, string reason, RevivalStateEntry? state = null) =>
+        new() { Success = false, DenialCode = code, Reason = reason, State = state is null ? null : state with { } };
 }
 
 //====================[ RevivalDeniedCode ]====================

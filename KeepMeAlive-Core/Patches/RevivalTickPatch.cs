@@ -18,7 +18,7 @@ namespace KeepMeAlive.Patches
         [PatchPostfix]
         private static void PatchPostfix(Player __instance)
         {
-            if (__instance == null || __instance.IsAI) return;
+            if (!PlayerUtils.IsHuman(__instance)) return;
 
             try
             {

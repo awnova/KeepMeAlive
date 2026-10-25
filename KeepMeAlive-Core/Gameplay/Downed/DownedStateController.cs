@@ -26,6 +26,7 @@ namespace KeepMeAlive.Gameplay.Downed
         internal static void ClearTimers(RMPlayer st)
         {
             st.CriticalStateMainTimer?.Stop(); st.CriticalStateMainTimer = null;
+            st.ReviveStatusTimer?.Stop(); st.ReviveStatusTimer = null;
             st.RevivePromptTimer?.Stop(); st.RevivePromptTimer = null;
         }
 
@@ -71,6 +72,7 @@ namespace KeepMeAlive.Gameplay.Downed
         // downed (DownedInventoryScreenBlockPatch only stops new ones opening).
         private static void CloseInventoryIfOpen(Player player)
         {
+            if (!Cfg.Downed.BlockUiWhenDowned) return;
             _nextInventoryCloseAttempt = Time.time + InventoryCloseRetrySeconds;
             try
             {
@@ -151,14 +153,8 @@ namespace KeepMeAlive.Gameplay.Downed
 
                 RevivePresentation.Stop(player, st, "EnterDowned_Reset");
 
-                if (st.State is RMState.BleedingOut or RMState.Reviving or RMState.Revived) return;
-
-                if (st.State == RMState.CoolDown)
-                {
-                    BodyInteractableRuntime.Remove(id);
-                    DeathMode.ForceBleedout(player, damageType);
-                    return;
-                }
+                // Only a healthy player goes down. A lethal hit during the cooldown never gets here: DeathMode lets it kill.
+                if (st.State != RMState.None) return;
 
                 st.CooldownTimer = 0f;
                 st.KillOverride = false;
@@ -212,16 +208,60 @@ namespace KeepMeAlive.Gameplay.Downed
         // disabled during this interval.
         public static bool IsRaidEnding { get; set; }
 
-        // Called from Harmony patches on raid-terminating engine calls (LocalGame.Stop,
-        // CoopGame.Extract) and from FikaGameEndedEvent.
+        // Called from CoopGame.Extract when the local player extracts. Cleans up only the local
+        // player's state, drag, UI, and input locks without wiping the raid for remaining teammates.
+        public static void HandleLocalPlayerExtracting()
+        {
+            try
+            {
+                var local = PlayerUtils.GetYourPlayer();
+                if (local == null) return;
+
+                if (DownedDragController.IsLocalDragging)
+                    DownedDragController.StopDrag(local, "coop-game-extract");
+                if (local.CurrentState is CrouchHoldState hold)
+                    hold.Cancel();
+
+                TeamHealWheel.Close("coop-game-extract");
+                DownedLootGuard.End();
+
+                if (RMSession.TryGetPlayerState(local.ProfileId, out var st))
+                {
+                    RevivePresentation.Stop(local, st, "coop-game-extract");
+                    RevivalController.StopReviveProgress(st);
+                    HeartbeatEffect.Stop(st);
+                    ClearTimers(st);
+                    st.ClearReviveSession();
+                    st.ClearSelfReviveInput();
+                    st.CooldownTimer = 0f;
+                    st.InvulnerabilityTimer = 0f;
+                    st.CriticalTimer = 0f;
+                    st.IsLimp = false;
+                    RMSession.SetPlayerState(local.ProfileId, RMState.None);
+                }
+
+                GhostMode.ClearGhostFlag(local.ProfileId);
+                GodMode.Disable(local);
+                DownedSpectate.Clear();
+                DownedScreenEffects.Stop();
+                TinnitusRing.Stop();
+                Hud.HideAll();
+                Hud.SetInputBlocked(false);
+                DownedMovementController.ScrubDownedInputLocks();
+                DownedRagdollController.ClearLocalFall();
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[DownedStateController] HandleLocalPlayerExtracting error: {ex.Message}");
+            }
+        }
+
+        // Called from Harmony patches on raid-terminating engine calls (CoopGame.Stop)
+        // and from FikaGameEndedEvent.
         public static void HandleRaidTerminating(string reason)
         {
             try
             {
-                var local = ModUtils.GetYourPlayer();
-                if (local == null || !RMSession.TryGetPlayerState(local.ProfileId, out var st) || st.State == RMState.None)
-                    return;
-
                 IsRaidEnding = true;
                 ResetForRaidBoundary(reason);
             }
@@ -237,7 +277,7 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             try
             {
-                var local = ModUtils.GetYourPlayer();
+                var local = PlayerUtils.GetYourPlayer();
                 if (local != null && RMSession.TryGetPlayerState(local.ProfileId, out var st))
                 {
                     RevivePresentation.Stop(local, st, reason);
@@ -245,6 +285,11 @@ namespace KeepMeAlive.Gameplay.Downed
                     HeartbeatEffect.Stop(st);
                     ClearTimers(st);
                 }
+
+                _nextInventoryCloseAttempt = 0f;
+                HeartbeatEffect.Clear();
+                LocalBodyCamera.Clear();
+                DownedLootGuard.End();
 
                 TinnitusScope.Clear();
                 TinnitusRing.Stop();
@@ -259,6 +304,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 BodyAnimation.ClearAll();
                 DownedVoiceController.ClearAll();
                 GhostMode.ClearAll();
+                GodMode.Clear();
                 BodyInteractableRuntime.Clear();
                 DeathMode.ClearCaches();
                 TeamHealWheel.Close("raid boundary");
@@ -434,7 +480,6 @@ namespace KeepMeAlive.Gameplay.Downed
                 Hud.HideHold();
                 ClearRevivePromptTimer(st);
                 ShowSelfRevivePromptIfEligible(player);
-                VFX_UI.Text(Color.yellow, PlayerFacingMessages.Downed.GiveUpCanceled);
                 return false;
             }
 
@@ -475,7 +520,6 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 Hud.HideHold();
                 Hud.HideStatusOverlay();
-                VFX_UI.Text(Color.red, PlayerFacingMessages.Downed.DownedBanner);
                 st.CriticalStateMainTimer = Hud.StartBleed(Cfg.Downed.CriticalStateSeconds, st.LivesRemaining);
                 ShowSelfRevivePromptIfEligible(player);
             }

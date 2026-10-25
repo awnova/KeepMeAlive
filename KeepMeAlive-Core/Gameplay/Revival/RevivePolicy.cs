@@ -30,8 +30,8 @@ namespace KeepMeAlive.Gameplay.Revival
         // The first required item the reviver lacks, so the caller can say which.
         public static RequiredItem MissingItem(ReviveSource source, Player reviver)
         {
-            if (RequireDefib(source) && !ModUtils.HasDefib(reviver)) return RequiredItem.Defib;
-            if (RequireStim(source) && !ModUtils.HasStim(reviver)) return RequiredItem.Stim;
+            if (RequireDefib(source) && !InventoryUtils.HasDefib(reviver)) return RequiredItem.Defib;
+            if (RequireStim(source) && !InventoryUtils.HasStim(reviver)) return RequiredItem.Stim;
             return RequiredItem.None;
         }
 

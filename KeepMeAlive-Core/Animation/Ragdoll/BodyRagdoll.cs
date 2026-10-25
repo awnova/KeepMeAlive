@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using EFT;
 using EFT.AssetsManager;
-using Fika.Core.Main.Utils;
 using UnityEngine;
 
 namespace KeepMeAlive.Animation.Ragdoll
@@ -96,7 +95,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         {
             if (player == null || string.IsNullOrEmpty(player.ProfileId)) return;
             // A headless host has no visuals to ragdoll.
-            if (FikaBackendUtils.IsHeadless) return;
+            if (FikaBridge.IsHeadless()) return;
 
             string id = player.ProfileId;
             bool active = Active.TryGetValue(id, out var session);
@@ -190,7 +189,12 @@ namespace KeepMeAlive.Animation.Ragdoll
                 Exit(session, pose);
             Failed.Remove(player.ProfileId);
 
-            var blend = player.GetComponent<BlendOut>();
+            DestroyBlendOut(player);
+        }
+
+        private static void DestroyBlendOut(Player player)
+        {
+            var blend = player != null ? player.GetComponent<BlendOut>() : null;
             if (blend != null)
             {
                 // Disabled as well: Destroy only takes effect at the end of the frame.
@@ -199,18 +203,50 @@ namespace KeepMeAlive.Animation.Ragdoll
             }
         }
 
+        private static void TakeFromProne(Session session)
+        {
+            var player = session.Player;
+            DestroyBlendOut(player);
+            session.Prone = false;
+            if (session.Rest.Count == 0) CaptureRest(player, session);
+            DetachFromEft(player, session);
+            if (session.Interactable == null && BodyInteractableRuntime.TryGet(player.ProfileId, out var interactable))
+                session.Interactable = interactable;
+            if (session.Interactable != null) session.Interactable.SetRagdollInert(true);
+        }
+
+        private static void HandToProne(Session session, float yaw, bool turnRoot = true)
+        {
+            var player = session.Player;
+            if (turnRoot) TurnRoot(player, yaw);
+            HandBack(session, ExitPose.Blend, player.IsYourPlayer ? 0f : ProneWarmSeconds);
+            session.Prone = true;
+        }
+
         // Raid boundary: the player objects are gone, so there is nothing to restore. The detached ragdoll
         // roots and hand objects live at the scene root and go with the scene.
         public static void ClearAll()
         {
-            // Extraction can leave the local player alive across the scene boundary. Exit it through the same path as a
-            // revive so detached ragdoll bodies, joints, colliders, the camera, and animator state are all restored.
+            // Exit every active session (local and remote) so ragdoll rigidbodies registered with
+            // PhysicsExtensions.UpdateController are unsupported and detached objects/events are cleaned up.
             var sessions = new List<Session>(Active.Values);
             foreach (var session in sessions)
             {
-                if (session.Player == null || !session.Player.IsYourPlayer) continue;
-                try { Exit(session, ExitPose.Rest); }
-                catch (Exception ex) { Plugin.LogSource.LogWarning($"[BodyRagdoll] Local animation restore failed: {ex.Message}"); }
+                try
+                {
+                    if (session.Player != null)
+                    {
+                        Exit(session, ExitPose.Rest);
+                    }
+                    else
+                    {
+                        foreach (var state in session.Bodies)
+                            if (state.Body != null) PhysicsExtensions.UpdateController.UnsupportRigidbody(state.Body);
+                        DestroyHand(session);
+                        DestroyMotors(session);
+                    }
+                }
+                catch (Exception ex) { Plugin.LogSource.LogWarning($"[BodyRagdoll] Session cleanup failed: {ex.Message}"); }
             }
             Active.Clear();
             Failed.Clear();
@@ -227,14 +263,13 @@ namespace KeepMeAlive.Animation.Ragdoll
         {
             // Humans only: the replicated copy of someone else (under Fika an ObservedPlayer) and the local player's own
             // body, which is ragdolled too so the owner's view is the one the observers see.
-            if (target.IsAI) return;
+            if (!PlayerUtils.IsHuman(target)) return;
             Player player = target;
             var pool = player.GetComponent<PlayerPoolObject>();
             if (pool == null) return;
 
             // A blend left over from the previous ragdoll would fight the new simulation.
-            var staleBlend = player.GetComponent<BlendOut>();
-            if (staleBlend != null) UnityEngine.Object.Destroy(staleBlend);
+            DestroyBlendOut(player);
 
             var session = new Session { Player = player };
             // Registered before anything is mutated so a mid-way failure can be rolled back by Exit.
@@ -388,9 +423,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             {
                 // Back under the player first: TurnRoot turns the skeleton's top bones, which the ragdoll has detached.
                 StopPhysics(session, true);
-                if (aimed) TurnRoot(player, yaw);
-                HandBack(session, ExitPose.Blend, player.IsYourPlayer ? 0f : ProneWarmSeconds);
-                session.Prone = true;
+                HandToProne(session, yaw, aimed);
                 RevivalDebugLog.LogDebug($"[BodyRagdoll] {player.ProfileId} settled on its front: prone (yaw {yaw:F0})");
             }
             catch (Exception ex)
@@ -412,9 +445,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             var player = session.Player;
             try
             {
-                TurnRoot(player, st.DropSpineYaw);
-                HandBack(session, ExitPose.Blend, player.IsYourPlayer ? 0f : ProneWarmSeconds);
-                session.Prone = true;
+                HandToProne(session, st.DropSpineYaw);
                 RevivalDebugLog.LogDebug($"[BodyRagdoll] {player.ProfileId} lies on its front as declared: prone (yaw {st.DropSpineYaw:F0})");
             }
             catch (Exception ex)
@@ -433,17 +464,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             if (InProneTransit(player)) return;
             try
             {
-                // A blend left from the hand-back would fight the pose.
-                var blend = player.GetComponent<BlendOut>();
-                if (blend != null)
-                {
-                    blend.enabled = false;
-                    UnityEngine.Object.Destroy(blend);
-                }
-                session.Prone = false;
-                if (session.Rest.Count == 0) CaptureRest(player, session);
-                DetachFromEft(player, session);
-                if (session.Interactable != null) session.Interactable.SetRagdollInert(true);
+                TakeFromProne(session);
 
                 var pool = player.GetComponent<PlayerPoolObject>();
                 session.Pose = DownedPose.TryStartLyingAt(player, pool, st.DropRestPelvis, st.DropFacingYaw);
@@ -472,17 +493,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             if (InProneTransit(player)) return;
             try
             {
-                // A blend left from the hand-back would fight the simulation.
-                var blend = player.GetComponent<BlendOut>();
-                if (blend != null)
-                {
-                    blend.enabled = false;
-                    UnityEngine.Object.Destroy(blend);
-                }
-                session.Prone = false;
-                if (session.Rest.Count == 0) CaptureRest(player, session);
-                DetachFromEft(player, session);
-                if (session.Interactable != null) session.Interactable.SetRagdollInert(true);
+                TakeFromProne(session);
                 StartPhysics(session, player.GetComponent<PlayerPoolObject>(), true, null);
             }
             catch (Exception ex)
@@ -648,10 +659,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 joint.enableProjection = true;
                 joint.projectionDistance = 0.05f;
                 joint.projectionAngle = 10f;
-                // The ratio of the prefab's own masses, as CorpseRagdoll.Start has it, not of the human masses set above: a light child
-                // with a big scale reacts to its own joint's limits and anchors that many times harder in the solver (massScale scales
-                // the inverse mass for constraints), and with the human masses the upper arms got 5.8 (the prefab's give far less). The
-                // arms and forearms bounced off their twist limits every tick (log 2026-10-18).
+                // Preserve the prefab mass ratio so scaled limb joints respond consistently in the solver.
                 joint.massScale = PrefabMass(session, joint.connectedBody) / PrefabMass(session, own);
                 joint.connectedMassScale = 1f;
             }
@@ -667,8 +675,7 @@ namespace KeepMeAlive.Animation.Ragdoll
             return body.mass;
         }
 
-        // Makes the bodies dynamic, as CorpseRagdoll.Start does. Separate from creating them because the joints are zeroed first
-        // (ZeroJointsAtMusclePose runs the physics for a moment, which must find every body still kinematic).
+        // Activates bodies after their joints have been zeroed at the muscle pose.
         private static void ActivateBodies(Session session)
         {
             float maxDepenetration = EFTHardSettings.Instance.CorpseMaxDepenetrationVelocity;

@@ -23,7 +23,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (!TeamHealWheel.IsOpen || __instance?.Player == null || !__instance.Player.IsYourPlayer) return true;
+                if (!TeamHealWheel.IsOpen || !PlayerUtils.TryGetLocalOwnerPlayer(__instance, out _)) return true;
                 if (!TeamHealWheel.HandleCommand(command)) return true;
 
                 __result = InputNode.ETranslateResult.Block;
@@ -49,7 +49,7 @@ namespace KeepMeAlive.Patches
         {
             try
             {
-                if (!TeamHealWheel.IsOpen || __instance?.Player == null || !__instance.Player.IsYourPlayer) return;
+                if (!TeamHealWheel.IsOpen || !PlayerUtils.TryGetLocalOwnerPlayer(__instance, out _)) return;
                 TeamHealWheel.HandleAxes(axes);
             }
             catch (Exception ex)

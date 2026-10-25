@@ -13,12 +13,6 @@ namespace KeepMeAlive.Gameplay.Downed
         private static SyncedGameplayConfig Cfg => SyncedServerConfigStore.Config.Gameplay;
 
         //====================[ Constants ]====================
-        private static readonly EBodyPart[] TrackedBodyParts =
-        {
-            EBodyPart.Head, EBodyPart.Chest, EBodyPart.Stomach,
-            EBodyPart.LeftArm, EBodyPart.RightArm, EBodyPart.LeftLeg, EBodyPart.RightLeg
-        };
-
         // The downing Kill() fires mid ApplyDamage; EFT then spreads the hit's overdamage, which can
         // destroy the parts just restored. Track the local player's ApplyDamage nesting so the
         // restore is repeated once the hit has fully resolved.
@@ -45,14 +39,14 @@ namespace KeepMeAlive.Gameplay.Downed
         // Restore destroyed body parts to 1 HP on downed entry; without it a lethal hit would kill instead of down.
         public static void RestoreVitalsToMinimum(Player player)
         {
-            if (player == null || !player.IsYourPlayer || player.ActiveHealthController is not { } hc) return;
+            if (!PlayerUtils.IsLocalPlayer(player) || player.ActiveHealthController is not { } hc) return;
             if (_applyDamageDepth > 0) _restoreAfterDamage = true;
             try
             {
                 bool restoredAny = false;
-                for (int i = 0; i < TrackedBodyParts.Length; i++)
+                for (int i = 0; i < HealthUtils.RealBodyParts.Length; i++)
                 {
-                    var part = TrackedBodyParts[i];
+                    var part = HealthUtils.RealBodyParts[i];
                     if (hc.IsBodyPartDestroyed(part) && hc.FullRestoreBodyPart(part))
                     {
                         restoredAny = true;
@@ -72,7 +66,7 @@ namespace KeepMeAlive.Gameplay.Downed
         // DownedMovementController.TickSpeedLimit.
         public static void ApplyCriticalEffects(Player player)
         {
-            if (player == null || !player.IsYourPlayer) return;
+            if (!PlayerUtils.IsLocalPlayer(player)) return;
             try
             {
                 if (player.ActiveHealthController != null)
@@ -113,19 +107,14 @@ namespace KeepMeAlive.Gameplay.Downed
         private static IEnumerator ContusionAfter(Player player, float wait, int cycleId)
         {
             yield return new WaitForSeconds(wait);
-            if (player == null || player.HealthController is not { IsAlive: true }) yield break;
+            if (!PlayerUtils.IsAlive(player)) yield break;
             if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)
                 || st.State != RMState.BleedingOut || st.ReviveCycleId != cycleId) yield break;
             try { ApplyDownedContusion(player); }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedHealthAndEffects] ContusionAfter error: {ex.Message}"); }
         }
 
-        private static void ApplyDownedContusion(Player player)
-        {
-            var hc = player.ActiveHealthController;
-            if (hc == null) return;
-            GodMode.RunWithDamageEnabled(player, () =>
-                TinnitusScope.Run(() => hc.DoContusion(Cfg.Downed.CriticalStateSeconds, 1f)));
-        }
+        private static void ApplyDownedContusion(Player player) =>
+            HealthUtils.ApplyContusionSilent(player, Cfg.Downed.CriticalStateSeconds);
     }
 }

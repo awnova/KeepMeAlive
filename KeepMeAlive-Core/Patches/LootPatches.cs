@@ -4,7 +4,9 @@ using System.Reflection;
 using Comfort.Common;
 using EFT;
 using EFT.Communications;
+using EFT.InputSystem;
 using EFT.InventoryLogic;
+using EFT.UI.Screens;
 using HarmonyLib;
 using SPT.Reflection.Patching;
 
@@ -21,9 +23,7 @@ namespace KeepMeAlive.Patches
         {
             if (__result || item == null || !__instance.IsSpecial) return;
 
-            var itemTpl = item.StringTemplateId ?? (string)item.TemplateId;
-
-            if (string.Equals(itemTpl, DefibIds.TemplateId, StringComparison.OrdinalIgnoreCase))
+            if (InventoryUtils.IsDefib(item))
             {
                 __result = true;
             }
@@ -42,8 +42,9 @@ namespace KeepMeAlive.Patches
         {
             if (!__result) return;
 
-            var owner = address.GetOwnerOrNull();
+            var owner = address?.GetOwnerOrNull();
             if (owner is Player.PlayerInventoryController pic
+                && pic.Player != null
                 && RMSession.IsPlayerCritical(pic.Player.ProfileId))
             {
                 __result = false;
@@ -51,7 +52,36 @@ namespace KeepMeAlive.Patches
         }
     }
 
+    // The inventory key pressed while looking at a downed teammate opens their loot (with the looter's own inventory beside
     //====================[ DownedLootGuardPatch ]====================
+    // it) instead of the looter's inventory alone. Runs before the game's own handling in GamePlayerOwner.TranslateCommand,
+    // which opens the inventory from the battle screen only; BlockAll stops it opening a second screen.
+    internal class DownedLootInventoryKeyPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(EftGamePlayerOwner), nameof(EftGamePlayerOwner.TranslateCommand));
+
+        [PatchPrefix]
+        private static bool Prefix(EftGamePlayerOwner __instance, ECommand command, ref InputNode.ETranslateResult __result)
+        {
+            try
+            {
+                if (command != ECommand.ToggleInventory || !PlayerUtils.TryGetLocalOwnerPlayer(__instance, out var player)) return true;
+                if (!(player.InteractableObject is BodyInteractable body) || !body.CanLoot(player)) return true;
+                if (!EftScreenManager.Instance.CheckCurrentScreen(EEftScreenType.BattleUI)) return true;
+
+                body.OnLootDowned(__instance);
+                __result = InputNode.ETranslateResult.BlockAll;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[DownedLootInventoryKey] error: {ex.Message}");
+                return true;
+            }
+        }
+    }
+
     // Every UI inventory action (drag/drop, quick-move, swap, split, discard) funnels through
     // ItemController.RunNetworkTransaction on the acting player's own controller.
     internal class DownedLootGuardPatch : ModulePatch

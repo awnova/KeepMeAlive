@@ -32,13 +32,6 @@ namespace KeepMeAlive.Gameplay.Medical
     {
         private static SyncedGameplayConfig Cfg => SyncedServerConfigStore.Config.Gameplay;
 
-        private static readonly EBodyPart[] BodyParts =
-        {
-            EBodyPart.Head, EBodyPart.Chest, EBodyPart.Stomach,
-            EBodyPart.LeftArm, EBodyPart.RightArm,
-            EBodyPart.LeftLeg, EBodyPart.RightLeg
-        };
-
         //====================[ Categories ]====================
         //   Bleeds    - LightBleeding or HeavyBleeding
         //   Breaks    - a fracture on any part, or a destroyed part surgery can restore
@@ -58,14 +51,14 @@ namespace KeepMeAlive.Gameplay.Medical
                         return hc.FindActiveEffect<IBleeding>(EBodyPart.Common) != null;
 
                     case MedCategory.Breaks:
-                        foreach (var part in BodyParts)
+                        foreach (var part in HealthUtils.RealBodyParts)
                         {
                             if (hc.IsBodyPartBroken(part) || IsSurgicallyRestorable(hc, part)) return true;
                         }
                         return false;
 
                     case MedCategory.Health:
-                        foreach (var part in BodyParts)
+                        foreach (var part in HealthUtils.RealBodyParts)
                         {
                             if (hc.IsBodyPartDestroyed(part)) continue;
                             var health = hc.GetBodyPartHealth(part);
@@ -115,7 +108,7 @@ namespace KeepMeAlive.Gameplay.Medical
                 if (hc == null) return PatientConditions.All;
 
                 bool fracture = false, destroyed = false;
-                foreach (var part in BodyParts)
+                foreach (var part in HealthUtils.RealBodyParts)
                 {
                     if (hc.IsBodyPartBroken(part)) fracture = true;
                     if (IsSurgicallyRestorable(hc, part)) destroyed = true;

@@ -26,27 +26,17 @@ namespace KeepMeAlive.Networking.Fika
             RevivalDebugLog.LogNetworkTrace($"[Packet] TeamHeal: {packet.healerId} healing {packet.patientId} with item {packet.itemId}");
 
             // Show notification on all machines.
-            try
-            {
-                string healerDisplay  = ModUtils.GetPlayerDisplayName(packet.healerId);
-                string patientDisplay = ModUtils.GetPlayerDisplayName(packet.patientId);
-                PlayerMessageRouter.Notify(
-                    Color.green,
-                    PlayerFacingMessages.TeamHeal.StartedBy(healerDisplay, patientDisplay),
-                    MessageAudience.InvolvedPlayers,
-                    packet.healerId,
-                    packet.patientId);
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogSource.LogWarning($"[VFX_UI] TeamHeal notify failed: {ex.Message}");
-            }
+            PlayerMessageRouter.NotifySafe("TeamHeal", Color.green,
+                () => PlayerFacingMessages.TeamHeal.StartedBy(
+                    PlayerUtils.GetPlayerDisplayName(packet.healerId),
+                    PlayerUtils.GetPlayerDisplayName(packet.patientId)),
+                packet.healerId, packet.patientId);
 
             // Only the patient applies the item; the HpResource drain on
             // the healer's item is synced back to the healer by Fika's health sync (vanilla behavior
             // for using someone else's meds), so every machine ends up consistent.
-            Player patient = ModUtils.GetPlayerById(packet.patientId);
-            if (patient == null || !patient.IsYourPlayer) return;
+            Player patient = PlayerUtils.GetPlayerById(packet.patientId);
+            if (!PlayerUtils.IsLocalPlayer(patient)) return;
 
             Plugin.StaticCoroutineRunner.StartCoroutine(TeamHealPatient.ApplyIncoming(patient, packet.healerId, packet.itemId));
         }
@@ -54,8 +44,7 @@ namespace KeepMeAlive.Networking.Fika
         //====================[ TeamHealResult ]====================
         private static void OnTeamHealResult(TeamHealResultPacket packet, NetPeer peer)
         {
-            var local = ModUtils.GetYourPlayer();
-            if (local == null || local.ProfileId != packet.healerId) return;
+            if (!PlayerUtils.IsLocalPlayer(packet.healerId)) return;
 
             TeamMedical.OnHealResult(packet.itemId, packet.success, packet.reason, packet.useSeconds);
         }
@@ -63,8 +52,7 @@ namespace KeepMeAlive.Networking.Fika
         //====================[ TeamHealUseEnded ]====================
         private static void OnTeamHealUseEnded(TeamHealUseEndedPacket packet, NetPeer peer)
         {
-            var local = ModUtils.GetYourPlayer();
-            if (local == null || local.ProfileId != packet.healerId) return;
+            if (!PlayerUtils.IsLocalPlayer(packet.healerId)) return;
 
             TeamMedical.OnHealEnded(packet.itemId, packet.completed);
         }

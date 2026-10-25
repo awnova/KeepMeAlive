@@ -36,13 +36,13 @@ namespace KeepMeAlive.Gameplay.Revival
 
         public static void RestorePlayerWeapon(Player player)
         {
-            if (player is null || !player.IsYourPlayer) return;
+            if (!PlayerUtils.IsLocalPlayer(player)) return;
 
             // Force hands to equip something if they are empty or stuck in a non-weapon state.
             // I defer this to a coroutine to wait out any in-flight inventory operation.
             // (e.g. a self-defib still being consumed) before racing another equip
             // against it - see RestorePlayerWeaponCoroutine.
-            if (!(player.HandsController is IFirearmHandsController))
+            if (!PlayerUtils.HoldsFirearm(player))
             {
                 Plugin.StaticCoroutineRunner.StartCoroutine(RestorePlayerWeaponCoroutine(player));
             }
@@ -50,12 +50,11 @@ namespace KeepMeAlive.Gameplay.Revival
 
         private static IEnumerator RestorePlayerWeaponCoroutine(Player player)
         {
-            yield return ModUtils.WaitForInventoryFree(player, 2f, "RestorePlayerWeapon");
+            yield return InventoryUtils.WaitForInventoryFree(player, 2f, "RestorePlayerWeapon");
 
             try
             {
-                if (player != null && player.HealthController != null && player.HealthController.IsAlive
-                    && !(player.HandsController is IFirearmHandsController))
+                if (PlayerUtils.IsAlive(player) && !PlayerUtils.HoldsFirearm(player))
                 {
                     player.SetFirstAvailableItem((Result<IHandsController> _) => { });
                 }

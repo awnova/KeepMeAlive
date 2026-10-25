@@ -53,7 +53,7 @@ namespace KeepMeAlive.Gameplay.Medical
         internal static IEnumerator ApplyIncoming(Player patient, string healerId, string itemId)
         {
             // Wait out any in-flight inventory operation (a revive equip still being processed) before racing ApplyItem.
-            yield return ModUtils.WaitForInventoryFree(patient, 2f, "TeamHealPacket");
+            yield return InventoryUtils.WaitForInventoryFree(patient, 2f, "TeamHealPacket");
             if (patient == null) yield break;
 
             int generation = _generation;
@@ -88,12 +88,12 @@ namespace KeepMeAlive.Gameplay.Medical
             IncomingHeal previous = null;
             try
             {
-                Player healer = ModUtils.GetPlayerById(heal.HealerId);
+                Player healer = PlayerUtils.GetPlayerById(heal.HealerId);
                 Item item = MedCatalog.Find(healer, heal.ItemId);
 
-                if (patient.HealthController == null || !patient.HealthController.IsAlive || RMSession.IsPlayerCritical(patient.ProfileId))
+                if (!PlayerUtils.IsAliveAndStanding(patient))
                     return PlayerFacingMessages.TeamHeal.PatientUnavailable;
-                if (!ModUtils.IsTeamHealItemValid(healer, item, out var invalidReason))
+                if (!InventoryUtils.IsTeamHealItemValid(healer, item, out var invalidReason))
                     return invalidReason;
                 if (_pending != null && !_pending.Resolved && !_pending.TimedOut)
                     return PlayerFacingMessages.TeamHeal.PatientBusy;
@@ -154,7 +154,6 @@ namespace KeepMeAlive.Gameplay.Medical
                 $"TimeLeft={effect.TimeLeft:F2} OverallDuration={effect.OverallDuration:F2} WorkStateTime={effect.WorkStateTime:F2} " +
                 $"CurStateTimeLeft={effect.CurStateTimeLeft:F2} State={effect.State}");
 
-            VFX_UI.Text(Color.green, PlayerFacingMessages.TeamHeal.YouWereHealed);
             FikaBridge.SendTeamHealResultPacket(heal.PatientId, heal.HealerId, heal.ItemId, true, string.Empty, useSeconds);
             Plugin.StaticCoroutineRunner.StartCoroutine(WatchUse(heal, effect, useSeconds));
         }

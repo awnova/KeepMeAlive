@@ -8,7 +8,7 @@ namespace KeepMeAlive.Gameplay.Revival
     //====================[ PostRevivalController ]====================
     // Remote players only get state/timer bookkeeping here. Anything touching input locks
     // (PlayerOwner.ignoredCommands is a single static set), pose, hands, speed or health must
-    // I run this only for the local player; a teammate's revive must not unlock or alter my player.
+    // run only for the local player; a teammate's revive must not unlock or alter the local player.
     internal static class PostRevivalController
     {
         //====================[ Timers ]====================
@@ -99,6 +99,8 @@ namespace KeepMeAlive.Gameplay.Revival
                 Hud.HideAll();
                 st.CriticalStateMainTimer?.Stop();
                 st.CriticalStateMainTimer = null;
+                st.ReviveStatusTimer?.Stop();
+                st.ReviveStatusTimer = null;
                 DownedStateController.ClearRevivePromptTimer(st);
                 st.RevivePromptTimer = Hud.ShowStatus(Hud.StatusKind.Invulnerable, st.InvulnerabilityTimer);
             }
