@@ -80,7 +80,7 @@ namespace KeepMeAlive.Gameplay.Revival
             foreach (EBodyPart part in HealthUtils.RealBodyParts)
             {
                 // DO NOT check IsBodyPartDestroyed here! 
-                // Vitals like Stomach might be saved at exactly 1 HP by the downed state,
+                // The head and chest are saved at exactly 1 HP by the downed state,
                 // so they are not formally "destroyed" but still need to be restored to their target percentages.
                 RestoreOneBodyPart(hc, part, cfg.RestorePercent);
             }

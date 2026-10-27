@@ -284,6 +284,9 @@ namespace KeepMeAlive.Gameplay.Downed
                     RevivalController.StopReviveProgress(st);
                     HeartbeatEffect.Stop(st);
                     ClearTimers(st);
+                    // Invalidates a self-revive still authorizing: the RMPlayer it captured outlives RMSession.Clear().
+                    st.SelfReviveAttemptId++;
+                    st.ClearSelfReviveInput();
                 }
 
                 _nextInventoryCloseAttempt = 0f;

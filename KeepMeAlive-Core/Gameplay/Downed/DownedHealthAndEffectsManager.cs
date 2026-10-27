@@ -36,7 +36,8 @@ namespace KeepMeAlive.Gameplay.Downed
             _restoreAfterDamage = false;
         }
 
-        // Restore destroyed body parts to 1 HP on downed entry; without it a lethal hit would kill instead of down.
+        // Restore a destroyed head or chest to 1 HP on downed entry; without it a lethal hit would kill instead of down.
+        // Limbs and the stomach are left alone so a blacked one (and its bleed) stays as the revive settings expect.
         public static void RestoreVitalsToMinimum(Player player)
         {
             if (!PlayerUtils.IsLocalPlayer(player) || player.ActiveHealthController is not { } hc) return;
@@ -44,9 +45,9 @@ namespace KeepMeAlive.Gameplay.Downed
             try
             {
                 bool restoredAny = false;
-                for (int i = 0; i < HealthUtils.RealBodyParts.Length; i++)
+                for (int i = 0; i < HealthUtils.LethalBodyParts.Length; i++)
                 {
-                    var part = HealthUtils.RealBodyParts[i];
+                    var part = HealthUtils.LethalBodyParts[i];
                     if (hc.IsBodyPartDestroyed(part) && hc.FullRestoreBodyPart(part))
                     {
                         restoredAny = true;

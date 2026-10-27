@@ -52,11 +52,11 @@ namespace KeepMeAlive.Gameplay.Medical
         // Started by TeamHealPacketHandlers once the request is confirmed to be about the local player.
         internal static IEnumerator ApplyIncoming(Player patient, string healerId, string itemId)
         {
+            int generation = _generation;
+
             // Wait out any in-flight inventory operation (a revive equip still being processed) before racing ApplyItem.
             yield return InventoryUtils.WaitForInventoryFree(patient, 2f, "TeamHealPacket");
-            if (patient == null) yield break;
-
-            int generation = _generation;
+            if (patient == null || generation != _generation) yield break;
             var heal = new IncomingHeal { PatientId = patient.ProfileId, HealerId = healerId, ItemId = itemId };
             string refusal = Apply(patient, heal);
             if (refusal != null)

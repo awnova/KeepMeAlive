@@ -24,7 +24,8 @@ namespace KeepMeAlive.Gameplay.Revival
 
         // Authorize with the server -> revalidate -> check/consume the item -> onStart.
         // Releases the server reservation when the attempt ends before starting. onDenied gets a
-        // null message when a newer attempt supersedes this one.
+        // null message when a newer attempt supersedes this one. It runs on the persistent plugin, so a raid
+        // boundary mid-way ends it silently: no callback and no cancel (the server reset covers the reservation).
         private static IEnumerator AuthorizeAndStartCoroutine(
             ReviveSource source,
             Player itemOwner,
@@ -37,12 +38,22 @@ namespace KeepMeAlive.Gameplay.Revival
             string sourceName = source switch { ReviveSource.Self => "self", ReviveSource.Defib => "defib", _ => "team" };
             ReviveDebug.Log("Auth_Start", targetId, false, $"reviver={reviverId} source={sourceName}");
 
+            int raidGen = RMSession.RaidGeneration;
+            bool RaidEnded()
+            {
+                if (raidGen == RMSession.RaidGeneration) return false;
+                ReviveDebug.Log("Auth_RaidEnded", targetId, false, $"reviver={reviverId} source={sourceName}");
+                return true;
+            }
+
             var task = RevivalAuthority.AuthorizeReviveStartAsync(targetId, reviverId, sourceName);
             float deadline = Time.time + AuthorizeTimeoutSeconds;
             while (!task.IsCompleted && Time.time < deadline)
             {
                 yield return null;
             }
+
+            if (RaidEnded()) yield break;
 
             // No answer in time: denied. The hold it ends blocks bleed-out and give-up, so it must not wait on the server
             // for as long as the HTTP layer would. The cancel queues behind the request, so a late grant is rolled back.
@@ -102,6 +113,7 @@ namespace KeepMeAlive.Gameplay.Revival
                 // Wait out any inventory operation in flight here, not inside the consume coroutines, so the target and
                 // reviver are checked again right before anything is spent.
                 yield return InventoryUtils.WaitForInventoryFree(itemOwner, ConsumeWaitSeconds, $"{sourceName}Revive");
+                if (RaidEnded()) yield break;
                 if (!stillValid())
                 {
                     RevivalAuthority.NotifyReviveStartCancelled(targetId);
@@ -113,6 +125,7 @@ namespace KeepMeAlive.Gameplay.Revival
             if (consumeDefib)
             {
                 yield return InventoryUtils.ConsumeDefibCoroutine(itemOwner, $"{sourceName}Defib", ok => hasDefib = ok);
+                if (RaidEnded()) yield break;
             }
 
             if (needDefib && !hasDefib)
@@ -126,6 +139,7 @@ namespace KeepMeAlive.Gameplay.Revival
             {
                 bool stimSpent = false;
                 yield return InventoryUtils.ConsumeStimCoroutine(itemOwner, $"{sourceName}Stim", ok => stimSpent = ok);
+                if (RaidEnded()) yield break;
                 if (!stimSpent)
                 {
                     RevivalAuthority.NotifyReviveStartCancelled(targetId);

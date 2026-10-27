@@ -16,6 +16,14 @@ namespace KeepMeAlive.Utilities
             EBodyPart.RightLeg
         };
 
+        // The parts EFT's ActiveHealthController.method_24 kills on when destroyed. EFT's own VitalBodyParts list also holds
+        // the stomach, but a destroyed stomach never kills; it is a surgery-restorable part like a limb.
+        public static readonly EBodyPart[] LethalBodyParts =
+        {
+            EBodyPart.Head,
+            EBodyPart.Chest
+        };
+
         // Applies a contusion without producing the tinnitus ring.
         public static void ApplyContusionSilent(Player player, float durationSeconds, float strength = 1f)
         {

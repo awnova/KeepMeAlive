@@ -1,20 +1,25 @@
 //====================[ Imports ]====================
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace KeepMeAlive.Runtime.State
 {
     //====================[ RMSession ]====================
     // Per-raid store of revival state for every tracked human player (local + remote).
-    // Main-thread only. Cleared on raid start and raid end via Clear().
+    // Main-thread only, except RaidGeneration, which RevivalAuthority's background queue also reads.
+    // Cleared on raid start and raid end via Clear().
     internal static class RMSession
     {
         public static event Action<string, RMState, RMState> PlayerStateChanged;
 
         private static readonly Dictionary<string, RMPlayer> PlayerStates = new();
 
-        public static int RaidGeneration { get; private set; }
-        public static void Clear() { RaidGeneration++; PlayerStates.Clear(); }
+        // Bumped by every Clear(). Anything async (coroutines, queued server calls) captures it before waiting and
+        // drops its result when it no longer matches, so nothing from one raid lands in the next.
+        private static int _raidGeneration;
+        public static int RaidGeneration => Volatile.Read(ref _raidGeneration);
+        public static void Clear() { Interlocked.Increment(ref _raidGeneration); PlayerStates.Clear(); }
 
         public static bool IsPlayerCritical(string playerId) =>
             TryGetPlayerState(playerId, out var st) && st.IsCritical;
