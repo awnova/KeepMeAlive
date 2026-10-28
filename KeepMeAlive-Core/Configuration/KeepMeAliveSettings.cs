@@ -23,6 +23,9 @@ namespace KeepMeAlive.Configuration
         public static ConfigEntry<float> DOWNED_PULSE_MIN_STRENGTH;
         public static ConfigEntry<float> DOWNED_PULSE_OFFSET_MS;
 
+        // Language
+        public static ConfigEntry<string> LANGUAGE;
+
         //====================[ Init ]====================
         public static void Init(ConfigFile config)
         {
@@ -91,6 +94,16 @@ namespace KeepMeAlive.Configuration
                 0f,
                 new ConfigDescription("Shifts the visual pulse relative to the heartbeat sound. Positive = later, negative = earlier. Use if the pulse feels out of sync with the audio.", new AcceptableValueRange<float>(-100f, 150f), new ConfigurationManagerAttributes { IsAdvanced = true })
             );
+
+            //====================[ Language ]====================
+            // The choices are the language files found at startup; a saved choice whose file is gone resets to Auto.
+            LANGUAGE = config.Bind(
+                "4. Language",
+                "Language",
+                Localization.Auto,
+                new ConfigDescription("Language of KeepMeAlive's on-screen text. Auto follows the game's language when a file for it exists, else English. More languages: add <code>.json files to BepInEx/plugins/KeepMeAlive-Locales and restart.", new AcceptableValueList<string>(Localization.Choices()))
+            );
+            LANGUAGE.SettingChanged += (_, _) => Hud.RefreshText();
         }
     }
 }

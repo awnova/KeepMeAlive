@@ -120,5 +120,8 @@
     <MakeDir Directories="$(RuntimePluginDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BuildPluginDir)" SkipUnchangedFiles="false" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(RuntimePluginDir)" SkipUnchangedFiles="false" />
+    <!-- A loose copy of the embedded English text, as the template translators copy to <code>.json beside it. -->
+    <Copy SourceFiles="Resources\Localization\en.json" DestinationFolder="$(BuildPluginDir)\KeepMeAlive-Locales" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="Resources\Localization\en.json" DestinationFolder="$(RuntimePluginDir)\KeepMeAlive-Locales" SkipUnchangedFiles="false" />
   </Target>
 </Project>

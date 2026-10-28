@@ -94,11 +94,12 @@ namespace KeepMeAlive.Gameplay.Revival
             }
 
             // The Defib revive demands a defib when its type requires one, and spends one of its uses whenever the type
-            // consumes them and the reviver is carrying one. Self and Team demand a stim instead, which is single-use
-            // and deleted as the revive starts. Nothing is spent unless everything required is there.
+            // consumes them and the reviver is carrying one. Self and Team demand a stim instead, which is deleted as the
+            // revive starts when the type consumes it. Nothing is spent unless everything required is there.
             bool hasDefib = InventoryUtils.HasDefib(itemOwner);
             bool needDefib = RevivePolicy.RequireDefib(source);
             bool needStim = RevivePolicy.RequireStim(source);
+            bool consumeStim = RevivePolicy.ShouldConsumeStim(source);
 
             if (needStim && !InventoryUtils.HasStim(itemOwner))
             {
@@ -108,7 +109,7 @@ namespace KeepMeAlive.Gameplay.Revival
             }
 
             bool consumeDefib = hasDefib && RevivePolicy.ShouldConsumeDefib(source);
-            if (consumeDefib || needStim)
+            if (consumeDefib || consumeStim)
             {
                 // Wait out any inventory operation in flight here, not inside the consume coroutines, so the target and
                 // reviver are checked again right before anything is spent.
@@ -135,7 +136,7 @@ namespace KeepMeAlive.Gameplay.Revival
                 yield break;
             }
 
-            if (needStim)
+            if (consumeStim)
             {
                 bool stimSpent = false;
                 yield return InventoryUtils.ConsumeStimCoroutine(itemOwner, $"{sourceName}Stim", ok => stimSpent = ok);

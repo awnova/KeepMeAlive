@@ -66,6 +66,7 @@ namespace KeepMeAlive.Configuration
         public bool RequireDefib { get; set; }
         public bool ConsumeDefib { get; set; }
         public bool RequireStim { get; set; }
+        public bool ConsumeStim { get; set; }
         public bool RestoreBodyParts { get; set; }
         public SyncedBodyRestorePercentConfig RestorePercent { get; set; } = new();
         public bool RemoveLightBleeds { get; set; }

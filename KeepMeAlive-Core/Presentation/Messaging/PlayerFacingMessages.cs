@@ -3,153 +3,154 @@
 namespace KeepMeAlive.Presentation.Messaging
 {
     //====================[ PlayerFacingMessages ]====================
-    // Centralized catalog for player-visible text.
+    // Centralized catalog for player-visible text. The wording lives in Resources/Localization/en.json (and its
+    // translations); each entry here is read when shown, so a language change applies to the next text drawn.
     internal static class PlayerFacingMessages
     {
-        private static string LifeWord(int count) => count == 1 ? "life" : "lives";
+        private static string T(string key) => Localization.Text(key);
+        private static string F(string key, params object[] args) => Localization.Format(key, args);
+        // A count with its noun, in the form the language uses for that number (key.One / .Few / .Other).
+        private static string Count(string key, int count) => Localization.Plural(key, count);
 
         //====================[ HUD ]====================
         // Labels drawn by Hud. Shown upper-case by the bar's font style.
         internal static class HudLabels
         {
-            public const string BleedingOut = "Bleeding out";
-            public const string BeingRevived = "Being revived";
-            public const string Reviving = "Reviving";
-            public const string RevivingYourself = "Reviving yourself";
-            public const string Invulnerable = "Invulnerable";
-            public const string GivingUp = "Giving up";
-            public const string Healing = "Healing";
+            public static string BleedingOut => T("Hud.BleedingOut");
+            public static string BeingRevived => T("Hud.BeingRevived");
+            public static string Reviving => T("Hud.Reviving");
+            public static string RevivingYourself => T("Hud.RevivingYourself");
+            public static string Invulnerable => T("Hud.Invulnerable");
+            public static string GivingUp => T("Hud.GivingUp");
+            public static string Healing => T("Hud.Healing");
 
-            public const string SelfRevive = "Self-revive";
-            public const string Revive = "Revive";
-            public const string Drag = "Drag";
-            public const string Loot = "Loot";
-            public const string Tap = "Tap";
-            public const string GiveUp = "Give up";
-            public const string Hold = "Hold";
-            public const string WaitForTeammate = "Wait for teammate";
-            public const string NeedsStim = "Needs stim";
-            public const string NeedsDefib = "Needs defib";
+            public static string SelfRevive => T("Hud.SelfRevive");
+            public static string Revive => T("Hud.Revive");
+            public static string Drag => T("Hud.Drag");
+            public static string Loot => T("Hud.Loot");
+            public static string Tap => T("Hud.Tap");
+            public static string GiveUp => T("Hud.GiveUp");
+            public static string Hold => T("Hud.Hold");
+            public static string WaitForTeammate => T("Hud.WaitForTeammate");
+            public static string NeedsStim => T("Hud.NeedsStim");
+            public static string NeedsDefib => T("Hud.NeedsDefib");
 
-            public const string Spectate = "Spectate";
-            public const string Spectating = "Spectating";
-            public const string Switch = "Switch";
-            public const string Camera = "Camera";
-            public const string NightVision = "Night vision";
-            public const string ReturnToBody = "Return to body";
-            public const string Head = "Head";
-            public const string ThirdPerson = "3rd person";
-            public const string HeadCam = "Head cam";
-            public const string On = "On";
-            public const string Off = "Off";
+            public static string Spectate => T("Hud.Spectate");
+            public static string Spectating => T("Hud.Spectating");
+            public static string Switch => T("Hud.Switch");
+            public static string Camera => T("Hud.Camera");
+            public static string NightVision => T("Hud.NightVision");
+            public static string ReturnToBody => T("Hud.ReturnToBody");
+            public static string Head => T("Hud.Head");
+            public static string ThirdPerson => T("Hud.ThirdPerson");
+            public static string HeadCam => T("Hud.HeadCam");
+            public static string On => T("Hud.On");
+            public static string Off => T("Hud.Off");
 
-            public static string LivesLeft(int count) => $"{count} {LifeWord(count)} left";
-            public static string Cost(int count) => $"-{count} {LifeWord(count)}";
-            public const string NotEnoughLives = "Not enough lives";
+            public static string LivesLeft(int count) => Count("Hud.LivesLeft", count);
+            public static string Cost(int count) => Count("Hud.Cost", count);
+            public static string NotEnoughLives => T("Hud.NotEnoughLives");
         }
 
         //====================[ Interactions ]====================
         internal static class Interaction
         {
-            public const string CannotReviveWhileMoving = "You can't revive a player while moving";
+            public static string CannotReviveWhileMoving => T("Interaction.CannotReviveWhileMoving");
             // The one menu entry for a downed teammate: tap drags (or lets go), hold revives.
-            public const string SupportAction = "Support";
-            public const string ReviveNoLongerPossible = "Revive no longer possible";
+            public static string SupportAction => T("Interaction.Support");
+            public static string ReviveNoLongerPossible => T("Interaction.ReviveNoLongerPossible");
             // The one menu entry for a standing, hurt teammate: opens the team-heal wheel.
-            public const string InteractAction = "Interact";
+            public static string InteractAction => T("Interaction.Interact");
 
-            public const string DragHint = "Dragging teammate - stand up, draw a weapon or turn away to let go";
-            public const string DragReleased = "Released teammate";
-            public const string LootProtectedItem = "Equipped gear can't be taken from a downed teammate";
+            public static string DragHint => T("Interaction.DragHint");
+            public static string DragReleased => T("Interaction.DragReleased");
+            public static string LootProtectedItem => T("Interaction.LootProtectedItem");
         }
 
         //====================[ Team Heal ]====================
         internal static class TeamHeal
         {
-            public const string PatientUnavailable = "Patient is no longer available";
-            public const string HealNoResponse = "Heal not confirmed by teammate";
-            public const string ItemUnavailable = "Med item no longer available";
-            public const string PatientBusy = "Teammate could not use the item";
-            public const string HealInterrupted = "Teammate stopped using the item";
+            public static string PatientUnavailable => T("TeamHeal.PatientUnavailable");
+            public static string HealNoResponse => T("TeamHeal.HealNoResponse");
+            public static string ItemUnavailable => T("TeamHeal.ItemUnavailable");
+            public static string PatientBusy => T("TeamHeal.PatientBusy");
+            public static string HealInterrupted => T("TeamHeal.HealInterrupted");
 
             public static string StartedBy(string healerDisplay, string patientDisplay) =>
-                $"{healerDisplay} is healing {patientDisplay}";
+                F("TeamHeal.StartedBy", healerDisplay, patientDisplay);
         }
 
         //====================[ Team-Heal Wheel ]====================
         // Labels drawn by TeamHealWheelView and its strip. Shown upper-case by the font style.
         internal static class HealWheel
         {
-            public const string Bleeds = "Bleeds";
-            public const string Breaks = "Breaks";
-            public const string Health = "Health";
-            public const string Comfort = "Comfort";
-            public const string Nutrition = "Nutrition";
+            public static string Bleeds => T("HealWheel.Bleeds");
+            public static string Breaks => T("HealWheel.Breaks");
+            public static string Health => T("HealWheel.Health");
+            public static string Comfort => T("HealWheel.Comfort");
+            public static string Nutrition => T("HealWheel.Nutrition");
 
-            public const string NotNeeded = "Not needed";
-            public const string NoMeds = "No meds";
+            public static string NotNeeded => T("HealWheel.NotNeeded");
+            public static string NoMeds => T("HealWheel.NoMeds");
 
-            public const string Open = "Open";
-            public const string Close = "Close";
-            public const string Use = "Use";
-            public const string Back = "Back";
+            public static string Open => T("HealWheel.Open");
+            public static string Close => T("HealWheel.Close");
+            public static string Use => T("HealWheel.Use");
+            public static string Back => T("HealWheel.Back");
 
-            public const string Hp = "HP";
-            public const string Uses = "uses";
-            public const string OneUse = "1 use";
+            public static string Hp => T("HealWheel.Hp");
+            public static string Uses => T("HealWheel.Uses");
+            public static string OneUse => T("HealWheel.OneUse");
 
-            public static string Items(int count) => count == 1 ? "1 item" : $"{count} items";
+            public static string Items(int count) => Count("HealWheel.Items", count);
         }
 
         //====================[ Revive Flow ]====================
         internal static class Revive
         {
-            public const string MissingStimCanceled = "Stim missing. Revive canceled.";
-            public const string Disabled = "This kind of revive is disabled";
-            public const string MissingDefibCanceled = "Defib missing. Revive canceled.";
+            public static string MissingStimCanceled => T("Revive.MissingStimCanceled");
+            public static string Disabled => T("Revive.Disabled");
+            public static string MissingDefibCanceled => T("Revive.MissingDefibCanceled");
         }
 
-        //====================[ Revive Complete ]====================
         //====================[ Revive Denials ]====================
         internal static class ReviveDenied
         {
-            public const string AuthorizationFailed = "Revive authorization failed";
-            public const string TeamFallback = "Revive denied";
-            public const string SelfFallback = "Revive denied by server";
-            public const string Cooldown = "Player on cooldown";
-            public const string OutOfLives = "Out of lives";
+            public static string AuthorizationFailed => T("ReviveDenied.AuthorizationFailed");
+            public static string TeamFallback => T("ReviveDenied.TeamFallback");
+            public static string SelfFallback => T("ReviveDenied.SelfFallback");
+            public static string Cooldown => T("ReviveDenied.Cooldown");
+            public static string OutOfLives => T("ReviveDenied.OutOfLives");
         }
 
         //====================[ Network Revive ]====================
         internal static class NetworkRevive
         {
-            public static string TeamCancelledBy(string reviverName) =>
-                $"{reviverName} cancelled revival";
+            public static string TeamCancelledBy(string reviverName) => F("NetworkRevive.TeamCancelledBy", reviverName);
         }
 
         //====================[ Downed UI ]====================
         internal static class Downed
         {
-            public const string ReviverTimedOut = "Reviver disconnected or timed out.";
+            public static string ReviverTimedOut => T("Downed.ReviverTimedOut");
 
             // Shown to everyone else when a teammate goes down.
-            public static string TeammateDown(string name) => $"{name} is down!";
+            public static string TeammateDown(string name) => F("Downed.TeammateDown", name);
         }
 
         //====================[ Post-Revive ]====================
         internal static class PostRevive
         {
-            public const string CooldownEnded = "Revival cooldown ended - you can now be revived";
+            public static string CooldownEnded => T("PostRevive.CooldownEnded");
 
             public static string InvulnerabilityEnded(float cooldownSeconds) =>
-                $"Invulnerability ended. Revival cooldown: {cooldownSeconds:F0}s";
+                F("PostRevive.InvulnerabilityEnded", cooldownSeconds);
         }
 
-        //====================[ Death ]====================
         //====================[ Spectate ]====================
         internal static class Spectate
         {
-            public const string NoTeammates = "No teammates left to spectate";
+            public static string NoTeammates => T("Spectate.NoTeammates");
         }
     }
 }

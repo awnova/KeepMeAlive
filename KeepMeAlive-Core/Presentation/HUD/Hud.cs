@@ -245,6 +245,14 @@ namespace KeepMeAlive.Presentation.HUD
             global::Comfort.Common.Singleton<global::EFT.Settings.SettingsManager>.Instance?.Control.Settings
                 .GetKeyName(global::EFT.InputSystem.EGameKey.Inventory) ?? "Tab";
 
+        // A key as the game's own prompts name it (Esc, BSpace, LShift...); mouse buttons come out in the game's language.
+        // The game names None as nothing, so an unbound key keeps Unity's name.
+        private static string KeyLabel(KeyCode key)
+        {
+            string name = global::EFT.KeyTools.GetKeyNameAlias(key);
+            return string.IsNullOrEmpty(name) ? key.ToString() : name;
+        }
+
         internal static void SetLookHint(bool drag, StripState revive, int cost, bool loot)
         {
             _hintKey = drag || revive != StripState.Hidden ? InteractKeyName() : null;
@@ -280,6 +288,15 @@ namespace KeepMeAlive.Presentation.HUD
         internal static void SetWheelStrip(WheelStrip strip) => _wheelStrip = strip;
 
         internal static void ClearWheelStrip() => _wheelStrip = WheelStrip.Hidden;
+
+        // Forces every bar to rebuild its text on the next update (the Language setting changed: same state, new words).
+        internal static void RefreshText()
+        {
+            _statusKey = null;
+            _subKey = null;
+            _holdKey = null;
+            _stripKey = null;
+        }
 
         internal static void HideStrip()
         {
@@ -643,9 +660,9 @@ namespace KeepMeAlive.Presentation.HUD
 
             bool items = _wheelStrip == WheelStrip.Items;
             var sb = new System.Text.StringBuilder(120);
-            KeyItem(sb, "LMB", items ? PlayerFacingMessages.HealWheel.Use : PlayerFacingMessages.HealWheel.Open);
+            KeyItem(sb, KeyLabel(KeyCode.Mouse0), items ? PlayerFacingMessages.HealWheel.Use : PlayerFacingMessages.HealWheel.Open);
             sb.Append("<space=1.8em>");
-            KeyItem(sb, "RMB", items ? PlayerFacingMessages.HealWheel.Back : PlayerFacingMessages.HealWheel.Close);
+            KeyItem(sb, KeyLabel(KeyCode.Mouse1), items ? PlayerFacingMessages.HealWheel.Back : PlayerFacingMessages.HealWheel.Close);
             _strip.SetText(sb.ToString(), true);
         }
 
@@ -683,22 +700,22 @@ namespace KeepMeAlive.Presentation.HUD
             // returns to their body).
             if (_spectateHint == SpectateHint.Active)
             {
-                KeyItem(sb, "LMB / RMB", PlayerFacingMessages.HudLabels.Switch);
+                KeyItem(sb, KeyLabel(DownedSpectate.NextKey) + " / " + KeyLabel(DownedSpectate.PreviousKey), PlayerFacingMessages.HudLabels.Switch);
                 sb.Append("<space=1.8em>");
-                KeyItem(sb, "Space", PlayerFacingMessages.HudLabels.Camera);
+                KeyItem(sb, KeyLabel(DownedSpectate.ViewKey), PlayerFacingMessages.HudLabels.Camera);
                 string head = PlayerFacingMessages.HudLabels.Head;
                 string third = PlayerFacingMessages.HudLabels.ThirdPerson;
                 sb.Append(' ');
                 State(sb, _spectateHeadcam ? Current(head) : head, _spectateHeadcam ? third : Current(third), " / ");
                 sb.Append("<space=1.8em>");
-                KeyItem(sb, "N", PlayerFacingMessages.HudLabels.NightVision);
+                KeyItem(sb, KeyLabel(DownedSpectate.VisionKey), PlayerFacingMessages.HudLabels.NightVision);
                 sb.Append(' ');
                 if (_spectateNightVision)
                     sb.Append("<color=").Append(ColorTag(Green)).Append("><size=80%><b>").Append(PlayerFacingMessages.HudLabels.On).Append("</b></size></color>");
                 else
                     sb.Append("<color=").Append(GreyTag).Append("><size=80%>").Append(PlayerFacingMessages.HudLabels.Off).Append("</size></color>");
                 sb.Append("<space=1.8em>");
-                KeyItem(sb, DownedSpectate.ReturnKey.ToString(), PlayerFacingMessages.HudLabels.ReturnToBody);
+                KeyItem(sb, KeyLabel(DownedSpectate.ReturnKey), PlayerFacingMessages.HudLabels.ReturnToBody);
                 return sb.ToString();
             }
 
@@ -717,7 +734,7 @@ namespace KeepMeAlive.Presentation.HUD
             if (_spectateHint == SpectateHint.Available)
             {
                 sb.Append("<space=1.8em>");
-                KeyItem(sb, DownedSpectate.EnterKey.ToString(), PlayerFacingMessages.HudLabels.Spectate);
+                KeyItem(sb, KeyLabel(DownedSpectate.EnterKey), PlayerFacingMessages.HudLabels.Spectate);
             }
 
             sb.Append("<space=1.8em>");
@@ -768,7 +785,7 @@ namespace KeepMeAlive.Presentation.HUD
         {
             if (hold)
                 sb.Append("<color=").Append(GreyTag).Append("><size=80%>").Append(PlayerFacingMessages.HudLabels.Hold).Append("</size></color> ");
-            sb.Append("<color=").Append(GoldTag).Append("><b>[ ").Append(key).Append(" ]</b></color> ");
+            sb.Append("<color=").Append(GoldTag).Append("><b>[ ").Append(KeyLabel(key)).Append(" ]</b></color> ");
             sb.Append("<color=").Append(TextTag).Append('>').Append(label).Append("</color>");
         }
 

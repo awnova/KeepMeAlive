@@ -20,10 +20,10 @@ namespace KeepMeAlive.Presentation.Spectating
         // The same V starts and ends it (the HUD shows both); switching target is Fika's own spectate keys.
         internal const KeyCode EnterKey = KeyCode.V;
         internal const KeyCode ReturnKey = KeyCode.V;
-        private const KeyCode NextKey = KeyCode.Mouse0;
-        private const KeyCode PreviousKey = KeyCode.Mouse1;
-        private const KeyCode ViewKey = KeyCode.Space;
-        private const KeyCode VisionKey = KeyCode.N;
+        internal const KeyCode NextKey = KeyCode.Mouse0;
+        internal const KeyCode PreviousKey = KeyCode.Mouse1;
+        internal const KeyCode ViewKey = KeyCode.Space;
+        internal const KeyCode VisionKey = KeyCode.N;
 
         // How long the camera holds its last pose with nobody left to follow before giving the view back.
         private const float NoTargetGraceSeconds = 1.5f;

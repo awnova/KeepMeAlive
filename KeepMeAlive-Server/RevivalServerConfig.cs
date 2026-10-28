@@ -60,9 +60,9 @@ public sealed class RevivalGameplayConfig
     public DownedConfig Downed { get; set; } = new();
     // One section per revive type: Self (own stim), Team (a teammate dragging the body, stim jab),
     // Defib (a teammate not dragging the body, defibrillator animation).
-    public ReviveTypeConfig Self { get; set; } = ReviveTypeConfig.CreateSelfDefaults();
-    public ReviveTypeConfig Team { get; set; } = ReviveTypeConfig.CreateTeamDefaults();
-    public ReviveTypeConfig Defib { get; set; } = ReviveTypeConfig.CreateDefibDefaults();
+    public StimReviveConfig Self { get; set; } = StimReviveConfig.CreateSelfDefaults();
+    public StimReviveConfig Team { get; set; } = StimReviveConfig.CreateTeamDefaults();
+    public DefibReviveConfig Defib { get; set; } = DefibReviveConfig.CreateDefaults();
     // Template id of the stim that Self and Team revives use up when their RequireStim is on. Empty uses the game's
     // Adrenaline stim, which the client knows by default.
     public string StimItemId { get; set; } = "";
@@ -75,9 +75,9 @@ public sealed class RevivalGameplayConfig
         StimItemId = (StimItemId ?? "").Trim();
 
         Downed ??= new DownedConfig();
-        Self ??= ReviveTypeConfig.CreateSelfDefaults();
-        Team ??= ReviveTypeConfig.CreateTeamDefaults();
-        Defib ??= ReviveTypeConfig.CreateDefibDefaults();
+        Self ??= StimReviveConfig.CreateSelfDefaults();
+        Team ??= StimReviveConfig.CreateTeamDefaults();
+        Defib ??= DefibReviveConfig.CreateDefaults();
         Protection ??= new ProtectionConfig();
         TeamHealing ??= new TeamHealingConfig();
         Development ??= new DevelopmentGameplayConfig();
@@ -111,18 +111,13 @@ public sealed class DownedConfig
 }
 
 //====================[ ReviveTypeConfig ]====================
-// Everything one revive type owns: whether it is on, how long it takes, what it costs, the defibrillator rules, and what
-// the revived player gets (restore, invulnerability, cooldown, effects).
-public sealed class ReviveTypeConfig
+// What every revive type owns: whether it is on, how long it takes, what it costs, and what the revived player gets
+// (restore, invulnerability, cooldown, effects). Item requirements live on the subclasses.
+public abstract class ReviveTypeConfig
 {
     public bool Enabled { get; set; } = true;
     public float HoldSeconds { get; set; } = 5f;
     public int LivesCost { get; set; } = 1;
-    // Defib only: the reviver must carry a defib, and ConsumeDefib spends one of its uses. Self and Team ignore both.
-    public bool RequireDefib { get; set; } = true;
-    public bool ConsumeDefib { get; set; }
-    // Self and Team only: the reviver must carry a stim, which is single-use and deleted when the revive starts.
-    public bool RequireStim { get; set; }
     public bool RestoreBodyParts { get; set; } = true;
     public BodyRestorePercentConfig RestorePercent { get; set; } = BodyRestorePercentConfig.CreateNeutralDefaults();
     public bool RemoveLightBleeds { get; set; }
@@ -137,12 +132,41 @@ public sealed class ReviveTypeConfig
     public bool ApplyPainOnRevive { get; set; }
     public float PainDurationSeconds { get; set; } = 30f;
 
-    public static ReviveTypeConfig CreateSelfDefaults() => new()
+    public void Normalize()
+    {
+        HoldSeconds = Math.Max(0.1f, HoldSeconds);
+        LivesCost = Math.Max(0, LivesCost);
+
+        RestorePercent ??= BodyRestorePercentConfig.CreateNeutralDefaults();
+        RestorePercent.Normalize();
+
+        InvulnerabilityDurationSeconds = Math.Max(0f, InvulnerabilityDurationSeconds);
+        // The client applies this as a movement speed limit, which cannot raise speed above normal.
+        InvulnerabilitySpeedPercent = float.IsFinite(InvulnerabilitySpeedPercent)
+            ? Math.Clamp(InvulnerabilitySpeedPercent, 0f, 100f)
+            : 100f;
+        CooldownSeconds = Math.Max(0f, CooldownSeconds);
+        ContusionDurationSeconds = Math.Max(0f, ContusionDurationSeconds);
+        PainDurationSeconds = Math.Max(0f, PainDurationSeconds);
+    }
+}
+
+//====================[ StimReviveConfig ]====================
+// Self and Team revives: the reviver may be required to carry a stim.
+public sealed class StimReviveConfig : ReviveTypeConfig
+{
+    // The reviver must carry a stim.
+    public bool RequireStim { get; set; }
+    // ConsumeStim deletes the stim as the revive starts; it only applies while RequireStim is on.
+    public bool ConsumeStim { get; set; }
+
+    public static StimReviveConfig CreateSelfDefaults() => new()
     {
         Enabled = true,
         HoldSeconds = 8f,
         LivesCost = 3,
         RequireStim = false,
+        ConsumeStim = false,
         RestoreBodyParts = true,
         RestorePercent = BodyRestorePercentConfig.CreateNeutralDefaults(),
         RemoveLightBleeds = false,
@@ -158,12 +182,13 @@ public sealed class ReviveTypeConfig
         PainDurationSeconds = 30f
     };
 
-    public static ReviveTypeConfig CreateTeamDefaults() => new()
+    public static StimReviveConfig CreateTeamDefaults() => new()
     {
         Enabled = true,
         HoldSeconds = 6f,
         LivesCost = 2,
         RequireStim = false,
+        ConsumeStim = false,
         RestoreBodyParts = true,
         RestorePercent = BodyRestorePercentConfig.CreateTeamDefaults(),
         RemoveLightBleeds = true,
@@ -178,9 +203,17 @@ public sealed class ReviveTypeConfig
         ApplyPainOnRevive = true,
         PainDurationSeconds = 20f
     };
+}
+
+//====================[ DefibReviveConfig ]====================
+// Defib revive: the reviver may be required to carry a defibrillator, and may spend one of its uses.
+public sealed class DefibReviveConfig : ReviveTypeConfig
+{
+    public bool RequireDefib { get; set; } = true;
+    public bool ConsumeDefib { get; set; }
 
     // The premium revive: needs a brought-in defibrillator (kept after use), so it is the fastest and cleanest.
-    public static ReviveTypeConfig CreateDefibDefaults() => new()
+    public static DefibReviveConfig CreateDefaults() => new()
     {
         Enabled = true,
         HoldSeconds = 4f,
@@ -201,24 +234,6 @@ public sealed class ReviveTypeConfig
         ApplyPainOnRevive = true,
         PainDurationSeconds = 10f
     };
-
-    public void Normalize()
-    {
-        HoldSeconds = Math.Max(0.1f, HoldSeconds);
-        LivesCost = Math.Max(0, LivesCost);
-
-        RestorePercent ??= BodyRestorePercentConfig.CreateNeutralDefaults();
-        RestorePercent.Normalize();
-
-        InvulnerabilityDurationSeconds = Math.Max(0f, InvulnerabilityDurationSeconds);
-        // The client applies this as a movement speed limit, which cannot raise speed above normal.
-        InvulnerabilitySpeedPercent = float.IsFinite(InvulnerabilitySpeedPercent)
-            ? Math.Clamp(InvulnerabilitySpeedPercent, 0f, 100f)
-            : 100f;
-        CooldownSeconds = Math.Max(0f, CooldownSeconds);
-        ContusionDurationSeconds = Math.Max(0f, ContusionDurationSeconds);
-        PainDurationSeconds = Math.Max(0f, PainDurationSeconds);
-    }
 }
 
 //====================[ BodyRestorePercentConfig ]====================

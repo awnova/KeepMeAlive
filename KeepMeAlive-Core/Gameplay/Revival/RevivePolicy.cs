@@ -37,7 +37,7 @@ namespace KeepMeAlive.Gameplay.Revival
 
         public enum RequiredItem { None, Defib, Stim }
 
-        // Whether the reviver must carry a stim, which the revive deletes. Only the stim revives (Self and Team) use one.
+        // Whether the reviver must carry a stim. Only the stim revives (Self and Team) use one.
         public static bool RequireStim(ReviveSource source) => source != ReviveSource.Defib && For(source).RequireStim;
 
         // Whether any stim revive needs the stim, e.g. to keep it from being looted off a downed player.
@@ -52,6 +52,9 @@ namespace KeepMeAlive.Gameplay.Revival
 
         // Length of the revive progress phase after the hold, the same for every source.
         public const float ProgressSeconds = 5f;
+
+        // Whether the revive deletes the stim it required. Only the stim revives (Self and Team) use one.
+        public static bool ShouldConsumeStim(ReviveSource source) => RequireStim(source) && For(source).ConsumeStim;
 
         public static bool ShouldConsumeDefib(ReviveSource source) => source == ReviveSource.Defib && For(source).ConsumeDefib;
 
