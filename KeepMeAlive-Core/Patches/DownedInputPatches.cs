@@ -123,11 +123,74 @@ namespace KeepMeAlive.Patches
                 RevivalDebugLog.LogDebug($"[DownedWeaponBlock] Blocked weapon proceed for {__instance.ProfileId} in state={st.State}");
                 // Complete the callback for the blocked hands operation.
                 callback?.Invoke(new Result<IFirearmHandsController>(null, "Weapon equip blocked while downed"));
+                DownedMovementController.RefuseHandsChange(__instance, null);
                 return false;
             }
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[DownedWeaponBlock] FikaPlayer prefix error: {ex.Message}");
+                return true;
+            }
+        }
+    }
+
+    //====================[ DownedTryProceedBlockPatch ]====================
+    // TryProceed is where every item-to-hands request lands (TrySetLastEquippedWeapon, SetFirstAvailableItem,
+    // SetInHands(Item), quick slots) before it splits into the per-type Proceed overloads; blocking the weapon one
+    // alone let knives, grenades and usable items through. Left-hand items don't change the hands controller.
+    internal class DownedTryProceedBlockPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(Player), nameof(Player.TryProceed), new[]
+            {
+                typeof(Item),
+                typeof(Callback<IHandsController>),
+                typeof(bool)
+            });
+
+        [PatchPrefix]
+        private static bool Prefix(Player __instance, Item item, Callback<IHandsController> completeCallback)
+        {
+            try
+            {
+                if (!__instance.IsYourPlayer || item == null || item.LeftHandItem) return true;
+                if (!RMSession.TryGetPlayerState(__instance.ProfileId, out var st)) return true;
+                if (!st.IsCritical || st.AllowWeaponEquipForReviveAnim) return true;
+
+                RevivalDebugLog.LogDebug($"[DownedHandsBlock] Refused {item.GetType().Name} to hands for {__instance.ProfileId} in state={st.State}");
+                DownedMovementController.RefuseHandsChange(__instance, completeCallback);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[DownedHandsBlock] TryProceed prefix error: {ex.Message}");
+                return true;
+            }
+        }
+    }
+
+    //====================[ ObservedDownedRestoreSkipPatch ]====================
+    // An observed player's hands follow its owner's packets, and Fika never restores them locally. A local restore on
+    // an observed downed body comes from another mod and draws a weapon its owner doesn't hold.
+    internal class ObservedDownedRestoreSkipPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(Player), nameof(Player.TrySetLastEquippedWeapon));
+
+        [PatchPrefix]
+        private static bool Prefix(Player __instance, Callback callback)
+        {
+            try
+            {
+                if (!(__instance is ObservedPlayer) || !RMSession.IsPlayerCritical(__instance.ProfileId)) return true;
+
+                RevivalDebugLog.LogDebug($"[DownedHandsBlock] Skipped local weapon restore on observed downed {__instance.ProfileId}");
+                callback?.Fail("Observed downed player's hands follow its owner");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[DownedHandsBlock] TrySetLastEquippedWeapon prefix error: {ex.Message}");
                 return true;
             }
         }

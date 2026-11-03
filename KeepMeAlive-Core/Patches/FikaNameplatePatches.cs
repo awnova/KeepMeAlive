@@ -62,8 +62,9 @@ namespace KeepMeAlive.Patches
     // the plate (effects, limbs, faction icons, occlusion/ADS/distance fade) is left to Fika.
     internal sealed class FikaOverlayController : MonoBehaviour
     {
-        private const string BleedingOutText = "BLEEDING OUT";
-        private const string RevivingText = "REVIVING";
+        // Bumped when the Language setting changes, so every plate showing a label redraws it in the new language.
+        private static int _labelVersion;
+        private int _shownLabelVersion;
 
         private FikaHealthBar _healthBar;
         private PlayerPlateUI _plate;
@@ -110,8 +111,23 @@ namespace KeepMeAlive.Patches
             {
                 Enter(st);
             }
+            else if (_shownLabelVersion != _labelVersion)
+            {
+                ShowLabel(st.State);
+            }
 
             UpdateTimer(st, Time.deltaTime);
+        }
+
+        public static void RefreshText() => _labelVersion++;
+
+        // Shown upper-case by the plate's font style (BLEEDING OUT / REVIVING).
+        private void ShowLabel(RMState state)
+        {
+            _plate.playerNameScreen.SetText(state == RMState.BleedingOut
+                ? PlayerFacingMessages.HudLabels.BleedingOut
+                : PlayerFacingMessages.Nameplate.Reviving);
+            _shownLabelVersion = _labelVersion;
         }
 
         private void Enter(RMPlayer st)
@@ -128,17 +144,16 @@ namespace KeepMeAlive.Patches
             if (st.State == RMState.BleedingOut)
             {
                 _plate.playerNameScreen.color = Color.red;
-                _plate.playerNameScreen.SetText(BleedingOutText);
                 _bleedRemaining = st.CriticalTimer;
                 _lastSyncedCritical = st.CriticalTimer;
             }
             else
             {
                 _plate.playerNameScreen.color = Color.green;
-                _plate.playerNameScreen.SetText(RevivingText);
                 _reviveElapsed = 0f;
                 _reviveDuration = RevivePolicy.ProgressSeconds;
             }
+            ShowLabel(st.State);
 
             _shownState = st.State;
             IsActive = true;

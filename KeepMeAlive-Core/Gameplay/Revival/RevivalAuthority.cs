@@ -176,18 +176,27 @@ namespace KeepMeAlive.Gameplay.Revival
                 return string.Empty;
             }
 
+            // The server's Reason is English debug text, so the player sees the code's own wording; Reason only goes to the log.
             switch (response.DenialCode)
             {
                 case 1:
                     return PlayerFacingMessages.ReviveDenied.Cooldown;
+                case 2:
+                    return PlayerFacingMessages.ReviveDenied.AlreadyInProgress;
+                case 3:
+                    return PlayerFacingMessages.Interaction.ReviveNoLongerPossible;
                 case 5:
                 case 8:
                 case 9:
                     return PlayerFacingMessages.ReviveDenied.AuthorizationFailed;
+                case 6:
+                    return PlayerFacingMessages.Revive.Disabled;
                 case 7:
                     return PlayerFacingMessages.ReviveDenied.OutOfLives;
                 default:
-                    return string.IsNullOrWhiteSpace(response.Reason) ? string.Empty : response.Reason;
+                    // An unknown code: the caller shows its generic denial.
+                    Plugin.LogSource.LogWarning($"[RevivalAuthority] Unmapped denial code {response.DenialCode}: {response.Reason}");
+                    return string.Empty;
             }
         }
     }

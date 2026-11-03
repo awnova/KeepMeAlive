@@ -47,6 +47,17 @@ namespace KeepMeAlive.Gameplay.Revival
 
         public static int LivesCost(ReviveSource source) => For(source).LivesCost;
 
+        // Enough lives for the cost, or AllowInsufficientLives with at least one left: the revive then spends the rest and
+        // the next down is final. Must match the server's RevivalStateService.HasLivesFor.
+        public static bool HasLivesFor(ReviveSource source, int livesRemaining)
+        {
+            var config = For(source);
+            return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
+        }
+
+        // The lives this revive actually takes, for the HUD: the cost, capped at what is left.
+        public static int LivesSpent(ReviveSource source, int livesRemaining) => Mathf.Clamp(livesRemaining, 0, LivesCost(source));
+
         // Whether the reviver must carry a defib for this type. Only the Defib revive uses one; Self and Team use a stim.
         public static bool RequireDefib(ReviveSource source) => source == ReviveSource.Defib && For(source).RequireDefib;
 

@@ -5,10 +5,10 @@ using EFT.HealthSystem;
 
 namespace KeepMeAlive.Gameplay.Revival
 {
-    //====================[ DefibCooldown Effect Types ]====================
-    internal interface IDefibCooldown : IHealthEffect { }
-    internal class DefibCooldownEffect : ActiveHealthController.Effect, IDefibCooldown { }
-    internal class DefibCooldownNetworkEffect : NetworkHealthController.Effect, IDefibCooldown { }
+    //====================[ ReviveCooldown Effect Types ]====================
+    internal interface IReviveCooldown : IHealthEffect { }
+    internal class ReviveCooldownEffect : ActiveHealthController.Effect, IReviveCooldown { }
+    internal class ReviveCooldownNetworkEffect : NetworkHealthController.Effect, IReviveCooldown { }
 
     //====================[ PostReviveEffects ]====================
     // Single entry point for everything that happens to a player the moment revival completes.
@@ -218,18 +218,33 @@ namespace KeepMeAlive.Gameplay.Revival
             try
             {
                 RevivalDebugLog.LogDebug(
-                    $"[PostReviveEffects] Applying DefibCooldown effect: hc={player.ActiveHealthController.GetType().Name}, workTime={cooldownDuration}");
-                var effect = player.ActiveHealthController.AddEffect<DefibCooldownEffect>(
+                    $"[PostReviveEffects] Applying ReviveCooldown effect: hc={player.ActiveHealthController.GetType().Name}, workTime={cooldownDuration}");
+                var effect = player.ActiveHealthController.AddEffect<ReviveCooldownEffect>(
                     EBodyPart.Chest,
                     delayTime: null,
                     workTime: cooldownDuration,
                     residueTime: 3f);
                 RevivalDebugLog.LogDebug(
-                    $"[PostReviveEffects] DefibCooldown applied: {effect?.GetType().Name}, Type={effect?.Type?.Name}, State={effect?.State}");
+                    $"[PostReviveEffects] ReviveCooldown applied: {effect?.GetType().Name}, Type={effect?.Type?.Name}, State={effect?.State}");
             }
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[PostReviveEffects] ApplyCooldownEffect error: {ex}");
+            }
+        }
+
+        // EFT reads the effect's tooltip name from HealthHelper._effectNames each time it builds the tooltip, and its own
+        // localization passes text it has no entry for through unchanged. Set from raid start, once the game's language is
+        // known, and again when the Language setting changes.
+        public static void RefreshCooldownEffectName()
+        {
+            try
+            {
+                HealthHelper._effectNames[typeof(IReviveCooldown)] = PlayerFacingMessages.PostRevive.CooldownEffectName;
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[PostReviveEffects] RefreshCooldownEffectName error: {ex.Message}");
             }
         }
     }

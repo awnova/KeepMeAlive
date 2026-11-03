@@ -53,6 +53,7 @@ namespace KeepMeAlive.Gameplay.Downed
             var mc = player?.MovementContext;
             if (mc == null || mc.OverridenState != null || player.CurrentState is not IdlePlayerState) return false;
 
+            if (player.IsYourPlayer) ExternalInputOwners.ReleaseAll("revive hold");
             mc.OverrideState(new CrouchHoldState(mc, player, seconds, onDone, facing));
             return true;
         }

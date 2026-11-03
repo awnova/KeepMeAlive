@@ -362,7 +362,9 @@ namespace KeepMeAlive.Components
                 case RevivePolicy.RequiredItem.Stim: return Hud.StripState.NeedsStim;
                 case RevivePolicy.RequiredItem.Defib: return Hud.StripState.NeedsDefib;
             }
-            return reviveeState.LivesRemaining < cost ? Hud.StripState.NoLives : Hud.StripState.Available;
+            if (!RevivePolicy.HasLivesFor(source, reviveeState.LivesRemaining)) return Hud.StripState.NoLives;
+            cost = RevivePolicy.LivesSpent(source, reviveeState.LivesRemaining);
+            return Hud.StripState.Available;
         }
 
         public void OnSupport(GamePlayerOwner owner)
@@ -399,7 +401,7 @@ namespace KeepMeAlive.Components
             var source = SourceFor(owner.Player, st);
             if (!RevivePolicy.IsEnabled(source))
                 VFX_UI.Text(Color.red, PlayerFacingMessages.Revive.Disabled);
-            else if (RevivePolicy.HasRequiredItem(source, owner.Player) && st.LivesRemaining >= RevivePolicy.LivesCost(source))
+            else if (RevivePolicy.HasRequiredItem(source, owner.Player) && RevivePolicy.HasLivesFor(source, st.LivesRemaining))
                 OnRevive(owner, source);
         }
 

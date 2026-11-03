@@ -52,6 +52,14 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string NotEnoughLives => T("Hud.NotEnoughLives");
         }
 
+        //====================[ Nameplate ]====================
+        // Fika's nameplate over a downed teammate. Bleeding out reuses the HUD's label.
+        internal static class Nameplate
+        {
+            // The teammate under the plate is being revived, by someone else or by themselves.
+            public static string Reviving => T("Nameplate.Reviving");
+        }
+
         //====================[ Interactions ]====================
         internal static class Interaction
         {
@@ -98,8 +106,9 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string Use => T("HealWheel.Use");
             public static string Back => T("HealWheel.Back");
 
-            public static string Hp => T("HealWheel.Hp");
-            public static string Uses => T("HealWheel.Uses");
+            // Current and max of a med's resource, e.g. "300 / 300 HP", "4 / 5 uses".
+            public static string HpAmount(int current, int max) => F("HealWheel.HpAmount", current, max);
+            public static string UsesAmount(int current, int max) => F("HealWheel.UsesAmount", current, max);
             public static string OneUse => T("HealWheel.OneUse");
 
             public static string Items(int count) => Count("HealWheel.Items", count);
@@ -121,6 +130,7 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string SelfFallback => T("ReviveDenied.SelfFallback");
             public static string Cooldown => T("ReviveDenied.Cooldown");
             public static string OutOfLives => T("ReviveDenied.OutOfLives");
+            public static string AlreadyInProgress => T("ReviveDenied.AlreadyInProgress");
         }
 
         //====================[ Network Revive ]====================
@@ -145,6 +155,9 @@ namespace KeepMeAlive.Presentation.Messaging
 
             public static string InvulnerabilityEnded(float cooldownSeconds) =>
                 F("PostRevive.InvulnerabilityEnded", cooldownSeconds);
+
+            // The cooldown effect's name on its health-panel tooltip.
+            public static string CooldownEffectName => T("PostRevive.CooldownEffectName");
         }
 
         //====================[ Spectate ]====================

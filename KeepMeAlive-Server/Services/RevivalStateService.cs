@@ -58,7 +58,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             if (entry.CooldownUntilUnixSeconds - CooldownGraceSeconds > now)
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.Cooldown, "Player on cooldown", entry);
 
-            if (entry.LivesRemaining < GetLivesCost(sourceKind))
+            if (!HasLivesFor(sourceKind, entry.LivesRemaining))
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.OutOfLives, "Player is out of lives", entry);
 
             if (entry.State == RevivalState.Reviving)
@@ -222,4 +222,12 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
     private const float ProgressSeconds = 5f;
 
     private int GetLivesCost(RevivalSourceKind source) => GetTypeConfig(source).LivesCost;
+
+    // Enough lives for the cost, or AllowInsufficientLives with at least one left; TryCompleteRevive then spends the
+    // rest (clamped at 0). Must match the client's RevivePolicy.HasLivesFor.
+    private bool HasLivesFor(RevivalSourceKind source, int livesRemaining)
+    {
+        var config = GetTypeConfig(source);
+        return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
+    }
 }

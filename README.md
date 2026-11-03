@@ -46,7 +46,7 @@ Server gameplay settings are in `user/mods/KeepMeAlive/config.json` inside `SPT_
 
 `Gameplay` has three revive sections, each with its own settings: **Self** (you stab yourself with a stim), **Team** (a teammate who is dragging you stabs you with a stim) and **Defib** (a teammate who is not dragging you uses the defibrillator). Shared downed-state settings (bleed-out time, lives pool, crawl speed) are in `Gameplay.Downed`.
 
-Each of `Self`, `Team` and `Defib` has: `Enabled`, `HoldSeconds`, `LivesCost`, `RestoreBodyParts`, `RestorePercent` (Head, Chest, Stomach, Arms, Legs), `RemoveLightBleeds`, `RemoveHeavyBleeds`, `RemoveLegFractures`, `RemoveArmFractures`, `InvulnerabilityDurationSeconds`, `InvulnerabilitySpeedPercent`, `CooldownSeconds`, `ApplyContusionOnRevive`, `ContusionDurationSeconds`, `ApplyPainOnRevive` and `PainDurationSeconds`. `Defib` also has `RequireDefib` (the reviver must carry a defib) and `ConsumeDefib` (uses one up when they have one). `Self` and `Team` also have `RequireStim` (off by default: the reviver must carry a stim) and `ConsumeStim` (off by default: the stim is deleted when the revive starts, and only applies with `RequireStim` on). `Gameplay.StimItemId` names the stim's template id; leave it empty for the game's Adrenaline stim. The config schema is version 1; an older `config.json` is rewritten with defaults for the new sections.
+Each of `Self`, `Team` and `Defib` has: `Enabled`, `HoldSeconds`, `LivesCost`, `AllowInsufficientLives` (off by default: with fewer lives left than `LivesCost`, but at least one, the revive still works and uses up the rest, so the next down can't be revived), `RestoreBodyParts`, `RestorePercent` (Head, Chest, Stomach, Arms, Legs), `RemoveLightBleeds`, `RemoveHeavyBleeds`, `RemoveLegFractures`, `RemoveArmFractures`, `InvulnerabilityDurationSeconds`, `InvulnerabilitySpeedPercent`, `CooldownSeconds`, `ApplyContusionOnRevive`, `ContusionDurationSeconds`, `ApplyPainOnRevive` and `PainDurationSeconds`. `Defib` also has `RequireDefib` (the reviver must carry a defib) and `ConsumeDefib` (uses one up when they have one). `Self` and `Team` also have `RequireStim` (off by default: the reviver must carry a stim) and `ConsumeStim` (off by default: the stim is deleted when the revive starts, and only applies with `RequireStim` on). `Gameplay.StimItemId` names the stim's template id; leave it empty for the game's Adrenaline stim. The config schema is version 1; an older `config.json` is rewritten with defaults for the new sections.
 
 Client-only options, including the self-revive and give-up keys and tinnitus audio, are in `BepInEx/config/com.awnova.keepmealive.cfg`.
 
@@ -64,6 +64,8 @@ Run `build.ps1` to build both projects in Release mode. The package is assembled
 These projects are what made this possible.
 - Original revival mod: **KaikiNoodles**
 - Bring Me To Life: **thuynguyentrungdang**
+- Spectate UI: **Zephyros**
+- Testing: **constance68w**
 - SPT-AKI and Fika development teams
 
 KeepMeAlive is not affiliated with or endorsed by Battlestate Games.

@@ -41,9 +41,9 @@ namespace KeepMeAlive
             KeepMeAliveSettings.Init(Config);
             SyncedServerConfigStore.Load();
 
-            // Register DefibCooldown effect types into EFT's reflection-based type registries.
+            // Register ReviveCooldown effect types into EFT's reflection-based type registries.
             // Must run before any health controllers are instantiated.
-            RegisterDefibCooldownEffectTypes();
+            RegisterReviveCooldownEffectTypes();
 
             EnableCorePatches();
             EnableGhostModePatches();
@@ -66,6 +66,8 @@ namespace KeepMeAlive
             new RaidExtractSafetyPatch().Enable();
             new RaidCoopStopSafetyPatch().Enable();
             new DownedFikaWeaponProceedBlockPatch().Enable();
+            new DownedTryProceedBlockPatch().Enable();
+            new ObservedDownedRestoreSkipPatch().Enable();
             new AvailableActionsPatch().Enable();
             new BodyProxyFindInteractablePatch().Enable();
             new DownedInventoryScreenBlockPatch().Enable();
@@ -123,30 +125,32 @@ namespace KeepMeAlive
             }
         }
 
-        //====================[ DefibCooldown Type Registration ]====================
-        // Registers DefibCooldown effect types into EFT's three reflection-based registries
+        //====================[ ReviveCooldown Type Registration ]====================
+        // Registers ReviveCooldown effect types into EFT's three reflection-based registries
         // so the effect can be serialized/deserialized over Fika's health sync network.
-        private static void RegisterDefibCooldownEffectTypes()
+        private static void RegisterReviveCooldownEffectTypes()
         {
             try
             {
-                LogSource.LogInfo("[Plugin] Registering DefibCooldown effect types...");
-                RegisterEffectSenderType(typeof(DefibCooldownEffect));
-                RegisterEffectReceiverType(senderType: typeof(DefibCooldownEffect), receiverType: typeof(DefibCooldownNetworkEffect));
-                HealthHelper._effectNames[typeof(IDefibCooldown)] = "DefibCooldown";
+                LogSource.LogInfo("[Plugin] Registering ReviveCooldown effect types...");
+                RegisterEffectSenderType(typeof(ReviveCooldownEffect));
+                RegisterEffectReceiverType(senderType: typeof(ReviveCooldownEffect), receiverType: typeof(ReviveCooldownNetworkEffect));
+                // A placeholder: raid start sets the player-facing name (PostReviveEffects.RefreshCooldownEffectName),
+                // since the game's language is not loaded yet.
+                HealthHelper._effectNames[typeof(IReviveCooldown)] = "ReviveCooldown";
 
                 // Verify
                 var dict0 = (Dictionary<string, byte>)AccessTools.Field(typeof(HealthHelper.EffectTypeCode), "_typeToByte").GetValue(null);
                 var closedType = typeof(HealthHelper.EffectActivator<>).MakeGenericType(typeof(NetworkHealthController));
                 var recvDict = (Dictionary<string, Func<object>>)AccessTools.Field(closedType, "_constructors").GetValue(null);
                 LogSource.LogInfo(
-                    $"[Plugin] DefibCooldown registered - sender: {dict0.ContainsKey(nameof(DefibCooldownEffect))}, " +
-                    $"receiver: {recvDict.ContainsKey(nameof(DefibCooldownEffect))}, " +
-                    $"interface: {HealthHelper._effectNames.ContainsKey(typeof(IDefibCooldown))}");
+                    $"[Plugin] ReviveCooldown registered - sender: {dict0.ContainsKey(nameof(ReviveCooldownEffect))}, " +
+                    $"receiver: {recvDict.ContainsKey(nameof(ReviveCooldownEffect))}, " +
+                    $"interface: {HealthHelper._effectNames.ContainsKey(typeof(IReviveCooldown))}");
             }
             catch (Exception ex)
             {
-                LogSource.LogError($"[Plugin] DefibCooldown type registration failed: {ex}");
+                LogSource.LogError($"[Plugin] ReviveCooldown type registration failed: {ex}");
             }
         }
 

@@ -118,6 +118,9 @@ public abstract class ReviveTypeConfig
     public bool Enabled { get; set; } = true;
     public float HoldSeconds { get; set; } = 5f;
     public int LivesCost { get; set; } = 1;
+    // Lets this revive go ahead with fewer lives left than LivesCost (but at least one); it spends the rest, so the
+    // player's next down cannot be revived.
+    public bool AllowInsufficientLives { get; set; }
     public bool RestoreBodyParts { get; set; } = true;
     public BodyRestorePercentConfig RestorePercent { get; set; } = BodyRestorePercentConfig.CreateNeutralDefaults();
     public bool RemoveLightBleeds { get; set; }

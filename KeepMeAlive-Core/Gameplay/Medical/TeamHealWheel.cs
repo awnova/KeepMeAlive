@@ -106,6 +106,7 @@ namespace KeepMeAlive.Gameplay.Medical
                 if (_view == null || !_view.IsAlive) _view = TeamHealWheelView.TryCreate();
                 if (_view == null) return;
 
+                ExternalInputOwners.ReleaseAll("team-heal wheel");
                 Close("reopened");
                 _healer = healer;
                 _patient = patient;
@@ -403,8 +404,8 @@ namespace KeepMeAlive.Gameplay.Medical
         // "300 / 300 HP", "4 / 5 USES", "60 / 100" (food and drink) or "1 USE".
         private static string AmountText(MedAmount amount) => amount.Unit switch
         {
-            MedAmountUnit.Hp => $"{amount.Current} / {amount.Max} {PlayerFacingMessages.HealWheel.Hp}",
-            MedAmountUnit.Uses => $"{amount.Current} / {amount.Max} {PlayerFacingMessages.HealWheel.Uses}",
+            MedAmountUnit.Hp => PlayerFacingMessages.HealWheel.HpAmount(amount.Current, amount.Max),
+            MedAmountUnit.Uses => PlayerFacingMessages.HealWheel.UsesAmount(amount.Current, amount.Max),
             MedAmountUnit.Portion => $"{amount.Current} / {amount.Max}",
             _ => PlayerFacingMessages.HealWheel.OneUse
         };

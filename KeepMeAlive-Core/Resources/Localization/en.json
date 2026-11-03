@@ -35,6 +35,9 @@
   "Hud.Cost.Other": "-{0} lives",
   "Hud.NotEnoughLives": "Not enough lives",
 
+  "_Nameplate": "Shown over a downed teammate's name: they are being revived, by someone else or by themselves.",
+  "Nameplate.Reviving": "Reviving",
+
   "Interaction.CannotReviveWhileMoving": "You can't revive a player while moving",
   "Interaction.Support": "Support",
   "Interaction.ReviveNoLongerPossible": "Revive no longer possible",
@@ -61,8 +64,8 @@
   "HealWheel.Close": "Close",
   "HealWheel.Use": "Use",
   "HealWheel.Back": "Back",
-  "HealWheel.Hp": "HP",
-  "HealWheel.Uses": "uses",
+  "HealWheel.HpAmount": "{0} / {1} HP",
+  "HealWheel.UsesAmount": "{0} / {1} uses",
   "HealWheel.OneUse": "1 use",
   "HealWheel.Items.One": "{0} item",
   "HealWheel.Items.Other": "{0} items",
@@ -76,6 +79,7 @@
   "ReviveDenied.SelfFallback": "Revive denied by server",
   "ReviveDenied.Cooldown": "Player on cooldown",
   "ReviveDenied.OutOfLives": "Out of lives",
+  "ReviveDenied.AlreadyInProgress": "A revive is already in progress",
 
   "NetworkRevive.TeamCancelledBy": "{0} cancelled revival",
 
@@ -84,6 +88,7 @@
 
   "PostRevive.CooldownEnded": "Revival cooldown ended - you can now be revived",
   "PostRevive.InvulnerabilityEnded": "Invulnerability ended. Revival cooldown: {0:F0}s",
+  "PostRevive.CooldownEffectName": "Revive cooldown",
 
   "Spectate.NoTeammates": "No teammates left to spectate"
 }

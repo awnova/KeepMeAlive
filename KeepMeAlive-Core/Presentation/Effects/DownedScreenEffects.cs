@@ -24,6 +24,11 @@ namespace KeepMeAlive.Presentation.Effects
         // Grayscale climbs at this multiple of the elapsed bleed-out fraction (clamped to full grey).
         private const float GrayscaleRate = 1.5f;
 
+        // Fixed look: full desaturation, a mild darkening that follows the grayscale fade, and a heartbeat dip.
+        private const float GrayscaleStrength = 1f;
+        private const float DimStrength = 0.3f;
+        private const float PulseMinStrength = 0.9f;
+
         // Effect strength ramps from the first value to the second as the bleed-out timer runs down.
         private const float TunnelStrengthStart = 0.35f;
         private const float TunnelStrengthEnd = 0.9f;
@@ -71,7 +76,7 @@ namespace KeepMeAlive.Presentation.Effects
         //====================[ Public API ]====================
         public static void Start(Player player)
         {
-            if (!PlayerUtils.IsLocalPlayer(player) || !KeepMeAliveSettings.ENABLE_DOWNED_SCREEN_EFFECTS.Value) return;
+            if (!PlayerUtils.IsLocalPlayer(player)) return;
             _active = true;
             _lastTick = Time.unscaledTime;
             _nextRebind = 0f;
@@ -136,15 +141,13 @@ namespace KeepMeAlive.Presentation.Effects
                 float total = Mathf.Max(1f, SyncedServerConfigStore.Config.Gameplay.Downed.CriticalStateSeconds);
                 float t = Mathf.Clamp01(1f - st.CriticalTimer / total); // 0 at the start of bleed-out, 1 at the end
 
-                // Full strength, easing down to the configured minimum between the lub and the dub.
-                float mult = Mathf.Lerp(1f, KeepMeAliveSettings.DOWNED_PULSE_MIN_STRENGTH.Value, BeatPulse());
+                // Full strength, easing down to the minimum between the lub and the dub.
+                float mult = Mathf.Lerp(1f, PulseMinStrength, BeatPulse());
 
                 _tunnelStub.Strength = Mathf.Lerp(TunnelStrengthStart, TunnelStrengthEnd, t) * mult;
                 _blendStub.Strength = t;
                 DownedBloodDarkness = Mathf.Lerp(RedEdgeDarknessStart, RedEdgeDarknessEnd, t) * mult;
-                _grayAmount = KeepMeAliveSettings.ENABLE_DOWNED_GRAYSCALE.Value
-                    ? Mathf.Clamp01(KeepMeAliveSettings.DOWNED_GRAYSCALE_STRENGTH.Value * GrayscaleRate * t)
-                    : 0f;
+                _grayAmount = Mathf.Clamp01(GrayscaleStrength * GrayscaleRate * t);
                 DownedBloodActive = true;
             }
             catch (Exception ex)
@@ -201,7 +204,7 @@ namespace KeepMeAlive.Presentation.Effects
         private static Texture DesaturateRamp(DesaturateEffect provider)
         {
             var source = provider.textureRamp;
-            float scale = 1f - KeepMeAliveSettings.DOWNED_DIM_STRENGTH.Value;
+            float scale = 1f - DimStrength;
             if (source == null || scale >= 0.999f) return source;
 
             int width = Mathf.Max(2, source.width);
@@ -237,10 +240,9 @@ namespace KeepMeAlive.Presentation.Effects
         private static float BeatPulse()
         {
             if (!HeartbeatEffect.TryGetBeatAge(out float age, out float interval, out float prevInterval)) return 0f;
-            age -= KeepMeAliveSettings.DOWNED_PULSE_OFFSET_MS.Value * 0.001f;
 
-            // The dip windows never overlap; the neighbouring beats only matter when the
-            // visual offset shifts the current time across a beat boundary.
+            // The dip windows never overlap, but the previous and next beats are checked so the
+            // dip stays continuous across a beat boundary.
             float pulse = GapDip(age);
             if (prevInterval > 0f) pulse = Mathf.Max(pulse, GapDip(age + prevInterval));
             return Mathf.Max(pulse, GapDip(age - interval));

@@ -10,6 +10,7 @@ global using KeepMeAlive.Gameplay.Revival;
 global using KeepMeAlive.Gameplay.Dragging;
 global using KeepMeAlive.Gameplay.Medical;
 global using KeepMeAlive.Gameplay.AI;
+global using KeepMeAlive.Interop;
 global using KeepMeAlive.Networking.Fika;
 global using KeepMeAlive.Networking.Fika.Packets;
 global using KeepMeAlive.Patches;

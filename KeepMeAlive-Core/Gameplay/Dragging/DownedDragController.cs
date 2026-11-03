@@ -233,6 +233,7 @@ namespace KeepMeAlive.Gameplay.Dragging
             var st = RMSession.GetPlayerState(revivee.ProfileId);
             if (!CanStartDrag(dragger, revivee, st)) return;
             if (!ApplyDragState(revivee.ProfileId, dragger.ProfileId, true)) return;
+            ExternalInputOwners.ReleaseAll("drag");
 
             _draggingId = revivee.ProfileId;
             // Picked up again before it settled: no longer this client's to say where it lies. (Another body let go of
@@ -602,10 +603,12 @@ namespace KeepMeAlive.Gameplay.Dragging
             }
 
             var st = RMSession.GetPlayerState(_draggingId);
-            int cost = RevivePolicy.LivesCost(ReviveSource.Team);
             var state = !RevivePolicy.HasRequiredItem(ReviveSource.Team, dragger) ? Hud.StripState.NeedsStim
-                : st.LivesRemaining < cost ? Hud.StripState.NoLives
+                : !RevivePolicy.HasLivesFor(ReviveSource.Team, st.LivesRemaining) ? Hud.StripState.NoLives
                 : Hud.StripState.Available;
+            int cost = state == Hud.StripState.Available
+                ? RevivePolicy.LivesSpent(ReviveSource.Team, st.LivesRemaining)
+                : RevivePolicy.LivesCost(ReviveSource.Team);
 
             // The cost is in the downed teammate's lives.
             Hud.SetDraggerStrip(state, cost, Hud.InteractKeyName());

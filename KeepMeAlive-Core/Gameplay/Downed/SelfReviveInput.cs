@@ -65,7 +65,7 @@ namespace KeepMeAlive.Gameplay.Downed
             }
 
             int selfReviveCost = RevivePolicy.LivesCost(ReviveSource.Self);
-            if (st.LivesRemaining < selfReviveCost)
+            if (!RevivePolicy.HasLivesFor(ReviveSource.Self, st.LivesRemaining))
             {
                 // Said by the strip's "Not enough lives" chip; refreshed here in case the lives changed since it was drawn.
                 RevivalController.Trace("SelfHold_BlockedOutOfLives", player, st, $"| livesRemaining={st.LivesRemaining} cost={selfReviveCost}");

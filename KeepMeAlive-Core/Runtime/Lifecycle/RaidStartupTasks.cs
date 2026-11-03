@@ -27,10 +27,12 @@ namespace KeepMeAlive.Runtime.Lifecycle
             DefibHands.Preload();
             StimSounds.Preload();
 
-            // Inject defib icon eagerly so FikaHealthBar nameplates can show it.
+            // Inject the revive cooldown icon eagerly so FikaHealthBar nameplates can show it.
             // FikaHealthBar.AddEffect() looks up effect.Type in _effectIcons when
             // EffectAddedEvent fires. Injection starts here and completes after hard settings load.
-            DefibCooldownIcon.EnsureIconInjected();
+            ReviveCooldownIcon.EnsureIconInjected();
+            // Its tooltip name, in the player's language (the game's is known by now).
+            PostReviveEffects.RefreshCooldownEffectName();
 
             // Initialize UI panel references during raid load.
             Plugin.StaticCoroutineRunner.StartCoroutine(WarmupUiPanelsCoroutine());

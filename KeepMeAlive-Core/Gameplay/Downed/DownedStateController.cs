@@ -56,13 +56,13 @@ namespace KeepMeAlive.Gameplay.Downed
             int cost = RevivePolicy.LivesCost(ReviveSource.Self);
             var st = RMSession.GetPlayerState(player.ProfileId);
 
-            if (st.LivesRemaining < cost)
+            if (!RevivePolicy.HasLivesFor(ReviveSource.Self, st.LivesRemaining))
             {
                 Hud.SetStrip(Hud.StripState.NoLives, cost);
                 return;
             }
 
-            Hud.SetStrip(Hud.StripState.Available, cost);
+            Hud.SetStrip(Hud.StripState.Available, RevivePolicy.LivesSpent(ReviveSource.Self, st.LivesRemaining));
         }
 
         private const float InventoryCloseRetrySeconds = 0.5f;
@@ -180,6 +180,7 @@ namespace KeepMeAlive.Gameplay.Downed
 
                 if (player.IsYourPlayer)
                 {
+                    ExternalInputOwners.ReleaseAll("downed");
                     if (Cfg.Downed.BlockUiWhenDowned) Hud.SetInputBlocked(true);
                     // LivesRemaining is updated at raid start and after a revive.
                     DownedRagdollController.Begin(player, st);
@@ -222,6 +223,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (local.CurrentState is CrouchHoldState hold)
                     hold.Cancel();
 
+                ExternalInputOwners.ReleaseAll("extract");
                 TeamHealWheel.Close("coop-game-extract");
                 DownedLootGuard.End();
 
@@ -310,6 +312,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 GodMode.Clear();
                 BodyInteractableRuntime.Clear();
                 DeathMode.ClearCaches();
+                ExternalInputOwners.ReleaseAll("raid boundary");
                 TeamHealWheel.Close("raid boundary");
                 TeamMedical.Clear();
                 TeamHealPatient.Clear();
@@ -368,6 +371,9 @@ namespace KeepMeAlive.Gameplay.Downed
 
             if (st.State != st.LastObservedState)
             {
+                // Once per change, not per tick: this runs every frame while downed.
+                ReviveDebug.Log("TickDowned_StateChanged", player.ProfileId, player.IsYourPlayer, $"{st.LastObservedState} -> {st.State}");
+
                 if (st.State == RMState.Reviving)
                 {
                     RevivalController.StartRevive(player, st, "StateTransition");
@@ -391,8 +397,6 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (player.IsYourPlayer && DownedScreenEffects.IsActive) DownedScreenEffects.Stop();
                 return;
             }
-
-            ReviveDebug.Log("TickDowned_Enter", player.ProfileId, player.IsYourPlayer, $"state={st.State}");
 
             // While Reviving the transit panel shows revive progress, not bleed-out, so CriticalTimer
             // is left frozen at its value when the revive started (it drives the screen effects).

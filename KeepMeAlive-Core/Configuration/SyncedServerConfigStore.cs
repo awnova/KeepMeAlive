@@ -63,6 +63,7 @@ namespace KeepMeAlive.Configuration
         public bool Enabled { get; set; }
         public float HoldSeconds { get; set; }
         public int LivesCost { get; set; }
+        public bool AllowInsufficientLives { get; set; }
         public bool RequireDefib { get; set; }
         public bool ConsumeDefib { get; set; }
         public bool RequireStim { get; set; }

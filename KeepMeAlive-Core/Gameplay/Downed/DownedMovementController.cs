@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using Comfort.Common;
 using EFT;
 using EFT.InputSystem;
 using UnityEngine;
@@ -243,6 +244,7 @@ namespace KeepMeAlive.Gameplay.Downed
 
                 player.SetEmptyHands(null);
                 AddIgnored(WeaponSelectCommands);
+                HookHandsGuard(player);
 
                 RevivalDebugLog.LogDebug($"[DownedMovement] ForceEmptyHands applied for {player.ProfileId}");
             }
@@ -255,10 +257,73 @@ namespace KeepMeAlive.Gameplay.Downed
             if (player == null || !player.IsYourPlayer) return;
             try
             {
+                UnhookHandsGuard();
                 RemoveIgnored(WeaponSelectCommands);
                 RevivalDebugLog.LogDebug($"[DownedMovement] ReleaseEmptyHands applied for {player.ProfileId}");
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] ReleaseEmptyHands error: {ex.Message}"); }
+        }
+
+        //====================[ Downed Hands ]====================
+        // A hands change refused while downed ends on empty hands, the way the game answers an item it can't take
+        // (Player.SetInHands falls back to SetEmptyHands). Refusing without it leaves no controller at all when the
+        // caller destroyed the old one first, as other mods' restores do (DestroyController, then
+        // TrySetLastEquippedWeapon).
+        public static void RefuseHandsChange(Player player, Callback<IHandsController> callback)
+        {
+            if (player.HandsController is Player.EmptyHandsController emptyHands)
+            {
+                callback?.Invoke(new Result<IHandsController>(emptyHands));
+                return;
+            }
+
+            player.SetEmptyHands(result => callback?.Invoke(result.Complete
+                ? new Result<IHandsController>(result.Value)
+                : new Result<IHandsController>(null, result.Error)));
+        }
+
+        // Backstop for swaps that bypass every hands call I patch: other mods destroy the controller and spawn their
+        // own in the same call, so hands still null a frame later means nothing is coming. Event-driven: runs only
+        // when the hands change, and only while downed.
+        private static Player _handsGuardPlayer;
+        private static Coroutine _handsRestoreRoutine;
+
+        private static void HookHandsGuard(Player player)
+        {
+            if (ReferenceEquals(_handsGuardPlayer, player)) return;
+            UnhookHandsGuard();
+
+            _handsGuardPlayer = player;
+            player.OnHandsControllerChanged += OnGuardHandsChanged;
+        }
+
+        private static void UnhookHandsGuard()
+        {
+            if (_handsGuardPlayer != null) _handsGuardPlayer.OnHandsControllerChanged -= OnGuardHandsChanged;
+            _handsGuardPlayer = null;
+
+            if (_handsRestoreRoutine != null && Plugin.StaticCoroutineRunner != null)
+                Plugin.StaticCoroutineRunner.StopCoroutine(_handsRestoreRoutine);
+            _handsRestoreRoutine = null;
+        }
+
+        private static void OnGuardHandsChanged(Player.AbstractHandsController previous, Player.AbstractHandsController next)
+        {
+            if (next != null || _handsRestoreRoutine != null || _handsGuardPlayer == null || Plugin.StaticCoroutineRunner == null) return;
+            _handsRestoreRoutine = Plugin.StaticCoroutineRunner.StartCoroutine(RestoreEmptyHandsRoutine(_handsGuardPlayer));
+        }
+
+        private static IEnumerator RestoreEmptyHandsRoutine(Player player)
+        {
+            yield return null;
+            _handsRestoreRoutine = null;
+
+            if (player == null || player.HandsController != null || player.ProcessStatus != Player.EProcessStatus.None) yield break;
+            if (!PlayerUtils.IsAlive(player) || !RMSession.IsPlayerCritical(player.ProfileId)) yield break;
+
+            Plugin.LogSource.LogWarning($"[DownedMovement] Hands left empty of any controller while downed; restoring empty hands for {player.ProfileId}");
+            try { player.SetEmptyHands(null); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] Empty-hands restore error: {ex.Message}"); }
         }
 
         //====================[ Downed State Application ]====================
@@ -319,6 +384,7 @@ namespace KeepMeAlive.Gameplay.Downed
             try
             {
                 UnhookProneGuard();
+                UnhookHandsGuard();
                 RemoveIgnored(StanceCommands);
                 RemoveIgnored(WeaponSelectCommands);
                 // The previous raid's MovementContext is gone; forget the limit it held.
