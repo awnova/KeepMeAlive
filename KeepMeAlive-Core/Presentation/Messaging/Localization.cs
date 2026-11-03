@@ -10,7 +10,7 @@ namespace KeepMeAlive.Presentation.Messaging
 {
     //====================[ Localization ]====================
     // Player-visible text by key. English is embedded in the DLL (Resources/Localization/en.json) and always complete; extra
-    // languages are loose <code>.json files in BepInEx/plugins/KeepMeAlive-Locales, named by EFT language code (ru, ge, fr...).
+    // languages are loose <code>.json files in BepInEx/plugins/KeepMeAlive/Localizations, named by EFT language code (ru, ge, fr...).
     // The Language setting picks one, or Auto follows the game's language. A key a file lacks falls back to English.
     internal static class Localization
     {
@@ -19,7 +19,7 @@ namespace KeepMeAlive.Presentation.Messaging
 
         private const string EmbeddedEnglish = "KeepMeAlive.Resources.Localization.en.json";
 
-        public static string Folder => Path.Combine(BepInEx.Paths.PluginPath, "KeepMeAlive-Locales");
+        public static string Folder => Path.Combine(BepInEx.Paths.PluginPath, "KeepMeAlive", "Localizations");
 
         //====================[ State ]====================
         // Text is also read off the main thread (RevivalAuthority's server calls), so the tables are filled under a lock.

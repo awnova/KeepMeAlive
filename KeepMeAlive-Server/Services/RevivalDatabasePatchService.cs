@@ -10,12 +10,10 @@ namespace KeepMeAlive.Server.Services;
 //====================[ RevivalDatabasePatchService ]====================
 [Injectable(InjectionType.Singleton)]
 public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService> logger,
-    TradersTable tradersTable, TemplateTable templateTable, LocaleTable localeTable, RevivalConfigService configService)
+    TradersTable tradersTable, TemplateTable templateTable, RevivalConfigService configService)
 {
     //====================[ Constants ]====================
     private const string TraderAssortItemId = "60dc0d93a66c41234a80aeff";
-    private const string ItemDescription =
-        "A portable defib used to revive a downed teammate from critical condition. Look at a downed teammate you are not dragging and hold Support to revive them.";
 
     private static readonly string[] PocketTemplateIds =
     {
@@ -30,7 +28,7 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
         {
             PatchTraderAssort();
             PatchDefibTemplate();
-            PatchItemDescription();
+            // The defib's description is localized client-side (DefibDescriptionPatch), per player language.
             PatchSpecialSlotFilters();
 
             logger.Info("[KeepMeAlive.Server] Applied database patches.");
@@ -115,23 +113,6 @@ public class RevivalDatabasePatchService(ISptLogger<RevivalDatabasePatchService>
 
         // Barter items always carry a ResourceComponent; a MaxResource above 0 makes the game draw its stock "uses" counter.
         item.Properties.MaxResource = configService.Config.Defib.Uses;
-    }
-
-    // The in-game description comes from the "<tpl> Description" locale key, not the template.
-    private void PatchItemDescription()
-    {
-        string key = $"{GetReviveTemplateId()} Description";
-        foreach (var (_, lazyLocale) in localeTable.Global)
-        {
-            lazyLocale.AddTransformer(localeData =>
-            {
-                if (localeData is not null)
-                {
-                    localeData[key] = ItemDescription;
-                }
-                return localeData;
-            });
-        }
     }
 
     private void PatchSpecialSlotFilters()

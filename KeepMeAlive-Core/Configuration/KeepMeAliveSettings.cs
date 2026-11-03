@@ -50,7 +50,7 @@ namespace KeepMeAlive.Configuration
                 "3. Language",
                 "Language",
                 Localization.Auto,
-                new ConfigDescription("Language of KeepMeAlive's on-screen text. Auto follows the game's language when a file for it exists, else English. More languages: add <code>.json files to BepInEx/plugins/KeepMeAlive-Locales and restart.", new AcceptableValueList<string>(Localization.Choices()))
+                new ConfigDescription("Language of KeepMeAlive's on-screen text. Auto follows the game's language when a file for it exists, else English. More languages: add <code>.json files to BepInEx/plugins/KeepMeAlive/Localizations and restart.", new AcceptableValueList<string>(Localization.Choices()))
             );
             LANGUAGE.SettingChanged += (_, _) =>
             {

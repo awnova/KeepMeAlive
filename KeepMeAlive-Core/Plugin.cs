@@ -16,7 +16,7 @@ namespace KeepMeAlive
     [BepInDependency("com.fika.headless", BepInDependency.DependencyFlags.SoftDependency)]
     // Soft dependency so SAIN (if installed) is already in Chainloader.PluginInfos when Awake runs.
     [BepInDependency("me.sol.sain", BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInPlugin("com.awnova.keepmealive", "KeepMeAlive", "1.0.0")]
+    [BepInPlugin("com.awnova.keepmealive", "KeepMeAlive", "1.0.1")]
     public class Plugin : BaseUnityPlugin
     {
         //====================[ Shared State ]====================
@@ -74,6 +74,7 @@ namespace KeepMeAlive
             new DownedApplyItemBlockPatch().Enable();
             new DownedQuickSlotSelectorBlockPatch().Enable();
             new SpecialSlotDefibPatch().Enable();
+            new DefibDescriptionPatch().Enable();
             new FikaOverlayPatch().Enable();
             new FikaHealthBarUpdateHealthPatch().Enable();
             new DownedPlayerLootPatch().Enable();

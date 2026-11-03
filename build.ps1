@@ -45,6 +45,9 @@ foreach ($root in $deployRoots) {
     }
 
     Write-Host "Deploying to $root" -ForegroundColor Cyan
+    # The old layout put the DLL straight in plugins/; left there, BepInEx would load the mod twice.
+    Remove-Item -Force -ErrorAction SilentlyContinue -Path (Join-Path $root 'BepInEx\plugins\KeepMeAlive.dll'),
+        (Join-Path $root 'BepInEx\plugins\KeepMeAlive-Locales\en.json')
     # Each part on its own, so a locked server mod does not hide that the client plugin went in (and vice versa).
     foreach ($dir in $deployDirs) {
         $target = Join-Path $root $dir
