@@ -16,7 +16,7 @@ namespace KeepMeAlive
     [BepInDependency("com.fika.headless", BepInDependency.DependencyFlags.SoftDependency)]
     // Soft dependency so SAIN (if installed) is already in Chainloader.PluginInfos when Awake runs.
     [BepInDependency("me.sol.sain", BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInPlugin("com.awnova.keepmealive", "KeepMeAlive", "1.0.1")]
+    [BepInPlugin("com.awnova.keepmealive", "KeepMeAlive", "1.1.0")]
     public class Plugin : BaseUnityPlugin
     {
         //====================[ Shared State ]====================

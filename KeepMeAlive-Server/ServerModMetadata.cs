@@ -16,6 +16,6 @@ public record ServerModMetadata : IModMetadata
     public bool HasPrepatcher { get; init; } = false;
     public string License { get; init; } = "MIT";
     public string ModGuid { get; init; } = "KeepMeAliveServer";
-    public SemanticVersioning.Version Version { get; init; } = new(1, 0, 1);
+    public SemanticVersioning.Version Version { get; init; } = new(1, 1, 0);
     public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
 }

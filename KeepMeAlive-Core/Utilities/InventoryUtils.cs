@@ -22,7 +22,18 @@ namespace KeepMeAlive.Utilities
 
         public static bool IsDefib(Item item) => HasTemplate(item, DefibIds.TemplateId);
 
-        public static bool IsStim(Item item) => HasTemplate(item, StimIds.TemplateId);
+        public static bool IsStim(Item item) => StimPriority(item) >= 0;
+
+        // The item's place in the stim list, or -1 when it isn't a stim.
+        private static int StimPriority(Item item)
+        {
+            var ids = StimIds.TemplateIds;
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (HasTemplate(item, ids[i])) return i;
+            }
+            return -1;
+        }
 
         public static Item FindItemById(Player player, string itemId)
         {
@@ -146,7 +157,8 @@ namespace KeepMeAlive.Utilities
             yield return RemoveOneCoroutine(controller, item, label, onDone);
         }
 
-        // The reviver's stim: the first item carrying the stim template (Adrenaline unless the server names another).
+        // The reviver's stim: the carried item whose template comes first in the stim list (Adrenaline unless the server
+        // names others).
         internal static Item FindStim(Player player)
         {
             try
@@ -157,16 +169,25 @@ namespace KeepMeAlive.Utilities
                     return null;
                 }
 
-                string templateId = StimIds.TemplateId;
+                Item best = null;
+                int bestPriority = int.MaxValue;
                 foreach (var it in items)
                 {
-                    if (IsStim(it))
+                    int priority = StimPriority(it);
+                    if (priority >= 0 && priority < bestPriority)
                     {
-                        return it;
+                        best = it;
+                        bestPriority = priority;
+                        if (priority == 0) break;
                     }
                 }
 
-                Plugin.LogSource.LogDebug($"FindStim: no item matching {templateId} found for {player?.ProfileId}");
+                if (best != null)
+                {
+                    return best;
+                }
+
+                Plugin.LogSource.LogDebug($"FindStim: no item matching {string.Join(", ", StimIds.TemplateIds)} found for {player?.ProfileId}");
             }
             catch (Exception ex)
             {

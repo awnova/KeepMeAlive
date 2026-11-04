@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace KeepMeAlive.Server;
 
 //====================[ RevivalServerConfig ]====================
@@ -63,16 +65,24 @@ public sealed class RevivalGameplayConfig
     public StimReviveConfig Self { get; set; } = StimReviveConfig.CreateSelfDefaults();
     public StimReviveConfig Team { get; set; } = StimReviveConfig.CreateTeamDefaults();
     public DefibReviveConfig Defib { get; set; } = DefibReviveConfig.CreateDefaults();
-    // Template id of the stim that Self and Team revives use up when their RequireStim is on. Empty uses the game's
-    // Adrenaline stim, which the client knows by default.
-    public string StimItemId { get; set; } = "";
+    // Template ids of the stims that Self and Team revives use up when their RequireStim is on; the first one the reviver
+    // carries is used. Empty uses the game's Adrenaline stim, which the client knows by default.
+    public List<string> StimItemIds { get; set; } = [];
+    // Pre-list single id: read once, moved to the front of StimItemIds, then dropped from the file.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? StimItemId { get; set; }
     public ProtectionConfig Protection { get; set; } = new();
     public TeamHealingConfig TeamHealing { get; set; } = new();
     public DevelopmentGameplayConfig Development { get; set; } = new();
 
     public void Normalize()
     {
-        StimItemId = (StimItemId ?? "").Trim();
+        StimItemIds = new[] { StimItemId }.Concat(StimItemIds ?? [])
+            .Select(id => (id ?? "").Trim())
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        StimItemId = null;
 
         Downed ??= new DownedConfig();
         Self ??= StimReviveConfig.CreateSelfDefaults();

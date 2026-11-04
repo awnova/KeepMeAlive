@@ -1,5 +1,6 @@
 //====================[ Imports ]====================
 using System;
+using System.Collections.Generic;
 
 namespace KeepMeAlive.Configuration
 {
@@ -19,25 +20,26 @@ namespace KeepMeAlive.Configuration
         public const string TemplateId = "5c052e6986f7746b207bc3c9";
     }
 
-    // The stim a Self or Team revive uses up when the server asks for one: the game's Adrenaline unless the server
-    // config names another template.
+    // The stims a Self or Team revive uses up when the server asks for one, in priority order: the game's Adrenaline
+    // unless the server config names other templates.
     internal static class StimIds
     {
         public const string DefaultTemplateId = "5c10c8fd86f7743d7d706df3";
+        private static readonly string[] DefaultIds = { DefaultTemplateId };
 
-        public static string TemplateId
+        public static IReadOnlyList<string> TemplateIds
         {
             get
             {
-                string configured = SyncedServerConfigStore.Config.Gameplay.StimItemId;
-                return string.IsNullOrWhiteSpace(configured) ? DefaultTemplateId : configured.Trim();
+                var configured = SyncedServerConfigStore.Config.Gameplay.StimItemIds;
+                return configured == null || configured.Count == 0 ? DefaultIds : configured;
             }
         }
     }
 
     internal sealed class SyncedGameplayConfig
     {
-        public string StimItemId { get; set; } = "";
+        public List<string> StimItemIds { get; set; } = new();
         public SyncedDownedConfig Downed { get; set; } = new();
         public SyncedReviveTypeConfig Self { get; set; } = new();
         public SyncedReviveTypeConfig Team { get; set; } = new();
