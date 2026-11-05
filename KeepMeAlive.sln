@@ -1,31 +1,54 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.10.34928.147
+VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive-Core", "KeepMeAlive-Core\KeepMeAlive.csproj", "{9076ADE2-F4EE-4B5D-B9A6-29A054CF0A7E}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "KeepMeAliveFika", "KeepMeAliveFika", "{58B59482-4DCF-CA4A-AB81-74D3809A9CF6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive-Server", "KeepMeAlive-Server\KeepMeAlive.Server.csproj", "{2AF4CBDF-2D4B-45A6-8CBD-48066AFA90C9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive", "KeepMeAliveFika\KeepMeAlive-Core\KeepMeAlive.csproj", "{9FFDEB55-52E6-4C56-8009-82D44AE72523}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive.Server", "KeepMeAliveFika\KeepMeAlive-Server\KeepMeAlive.Server.csproj", "{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{9076ADE2-F4EE-4B5D-B9A6-29A054CF0A7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9076ADE2-F4EE-4B5D-B9A6-29A054CF0A7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9076ADE2-F4EE-4B5D-B9A6-29A054CF0A7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9076ADE2-F4EE-4B5D-B9A6-29A054CF0A7E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2AF4CBDF-2D4B-45A6-8CBD-48066AFA90C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2AF4CBDF-2D4B-45A6-8CBD-48066AFA90C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2AF4CBDF-2D4B-45A6-8CBD-48066AFA90C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2AF4CBDF-2D4B-45A6-8CBD-48066AFA90C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|x64.Build.0 = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Debug|x86.Build.0 = Debug|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|x64.ActiveCfg = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|x64.Build.0 = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|x86.ActiveCfg = Release|Any CPU
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523}.Release|x86.Build.0 = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|x64.Build.0 = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Debug|x86.Build.0 = Debug|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x64.ActiveCfg = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x64.Build.0 = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x86.ActiveCfg = Release|Any CPU
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {09F9952E-ECA7-4B79-A94D-0FBCDA1BC1B4}
+	GlobalSection(NestedProjects) = preSolution
+		{9FFDEB55-52E6-4C56-8009-82D44AE72523} = {58B59482-4DCF-CA4A-AB81-74D3809A9CF6}
+		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42} = {58B59482-4DCF-CA4A-AB81-74D3809A9CF6}
 	EndGlobalSection
 EndGlobal

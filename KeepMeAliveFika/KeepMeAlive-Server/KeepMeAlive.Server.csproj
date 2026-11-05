@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <ServerModDir>$(MSBuildProjectDirectory)\..\Build\KeepMeAlive\SPT_Runtime\user\mods\KeepMeAlive</ServerModDir>
+    <ServerModDir>$(MSBuildProjectDirectory)\..\..\Build\KeepMeAliveFika\SPT_Runtime\user\mods\KeepMeAlive</ServerModDir>
   </PropertyGroup>
 
   <Target Name="DeployToBuildFolder" AfterTargets="Build">

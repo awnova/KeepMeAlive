@@ -58,7 +58,7 @@ Client-only options, including the self-revive and give-up keys and tinnitus aud
 
 ## Build from source
 
-Run `build.ps1` to build both projects in Release mode. The package is assembled under `Build/KeepMeAlive`, and the client plugin is also copied to the configured SPT install. The client project expects SPT at `C:\SPT` by default; set the `SPTBaseDir` MSBuild property to your SPT client installation path when building elsewhere.
+Run `build.ps1` to build both projects in Release mode. The package is assembled under `Build/KeepMeAliveFika`, and the client plugin is also copied to the configured SPT install. The client project expects SPT at `C:\SPT` by default; set the `SPTBaseDir` MSBuild property to your SPT client installation path when building elsewhere.
 
 ## Credits
 These projects are what made this possible.

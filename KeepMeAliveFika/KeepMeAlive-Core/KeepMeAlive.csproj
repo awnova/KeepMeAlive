@@ -59,7 +59,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <BuildPluginDir>$(MSBuildProjectDirectory)\..\Build\KeepMeAlive\BepInEx\plugins\KeepMeAlive</BuildPluginDir>
+    <BuildPluginDir>$(MSBuildProjectDirectory)\..\..\Build\KeepMeAliveFika\BepInEx\plugins\KeepMeAlive</BuildPluginDir>
     <RuntimePluginDir>$(SPTBaseDir)\BepInEx\plugins\KeepMeAlive</RuntimePluginDir>
   </PropertyGroup>
 

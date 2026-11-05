@@ -1,12 +1,4 @@
 # Build outputs
-KeepMeAlive-Core/bin/
-KeepMeAlive-Core/obj/
-KeepMeAlive-Server/bin/
-KeepMeAlive-Server/obj/
-KeepMeAlive-Server/build/
-KeepMeAlive-Server/node_modules/
-KeepMeAlive-Server/types/
-KeepMeAlive-Server/config.json
 
 # IDE files
 .vs/

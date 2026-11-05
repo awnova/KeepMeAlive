@@ -5,7 +5,7 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$packageRoot = Join-Path $repoRoot 'Build\KeepMeAlive'
+$packageRoot = Join-Path $repoRoot '..\Build\KeepMeAliveFika'
 $bepinDir    = Join-Path $packageRoot 'BepInEx'
 $sptDir      = Join-Path $packageRoot 'SPT_Runtime'
 $deployRoots = @('C:\SPT', 'Y:\SPT', 'Y:\NsmServers\Tarkov2.0Test\Host1')
