@@ -211,6 +211,8 @@ namespace KeepMeAlive.Patches
             {
                 if (!PlayerUtils.TryGetLocalOwnerPlayer(__instance, out var player)) return true;
                 if (!RMSession.TryGetPlayerState(player.ProfileId, out var st)) return true;
+                // Key releases pass, so a key held at the downing is let go.
+                if (TeamHealWheel.Releases.Contains(command)) return true;
 
                 bool blockUi = SyncedServerConfigStore.Config.Gameplay.Downed.BlockUiWhenDowned;
                 bool block = st.IsSilentInventoryAnimActive

@@ -54,11 +54,12 @@ namespace KeepMeAlive.Gameplay.Medical
         {
             int generation = _generation;
 
-            // Wait out any in-flight inventory operation (a revive equip still being processed) before racing ApplyItem.
-            yield return InventoryUtils.WaitForInventoryFree(patient, 2f, "TeamHealPacket");
+            // Wait out an inventory operation or hands change before ApplyItem, so it isn't queued on top.
+            bool idle = false;
+            yield return InventoryUtils.WaitForHandsIdle(patient, 2f, "TeamHealPacket", ok => idle = ok);
             if (patient == null || generation != _generation) yield break;
             var heal = new IncomingHeal { PatientId = patient.ProfileId, HealerId = healerId, ItemId = itemId };
-            string refusal = Apply(patient, heal);
+            string refusal = idle ? Apply(patient, heal) : PlayerFacingMessages.TeamHeal.PatientBusy;
             if (refusal != null)
             {
                 FikaBridge.SendTeamHealResultPacket(heal.PatientId, healerId, itemId, false, refusal, 0f);

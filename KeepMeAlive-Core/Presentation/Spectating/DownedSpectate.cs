@@ -54,11 +54,11 @@ namespace KeepMeAlive.Presentation.Spectating
 
         public static bool IsActive => _cam != null;
 
-        // Commands the spectate keys would also trigger in the game while they are in use.
+        // Commands the spectate keys would also trigger in the game while they are in use. Presses only; releases pass.
         public static bool BlocksCommand(ECommand command) =>
             command == ECommand.ToggleGoggles
-            || command == ECommand.ToggleShooting || command == ECommand.EndShooting
-            || command == ECommand.ToggleAlternativeShooting || command == ECommand.EndAlternativeShooting;
+            || command == ECommand.ToggleShooting
+            || command == ECommand.ToggleAlternativeShooting;
 
         //====================[ Per tick (local player) ]====================
         public static void Tick(Player player, RMPlayer st)

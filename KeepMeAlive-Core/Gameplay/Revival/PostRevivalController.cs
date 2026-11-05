@@ -87,12 +87,12 @@ namespace KeepMeAlive.Gameplay.Revival
                 {
                     st.HasInitializedInvulnerability = true;
 
-                    // Centralized restore point: release downed locks, then restore weapon and movement.
-                    DownedMovementController.ReleaseProne(player);
-                    DownedMovementController.ReleaseEmptyHands(player);
-                    PlayerRestorations.RestorePlayerWeapon(player);
-                    PlayerRestorations.RestorePlayerMovement(player, forceStandingPose: true);
-                    DownedMovementController.ReattachMovementHooks(player);
+                    // Centralized restore point: release downed locks, then restore weapon and movement. Each step on its own.
+                    RestoreStep("ReleaseProne", () => DownedMovementController.ReleaseProne(player));
+                    RestoreStep("ReleaseEmptyHands", () => DownedMovementController.ReleaseEmptyHands(player));
+                    RestoreStep("RestorePlayerWeapon", () => PlayerRestorations.RestorePlayerWeapon(player));
+                    RestoreStep("RestorePlayerMovement", () => PlayerRestorations.RestorePlayerMovement(player));
+                    RestoreStep("ReattachMovementHooks", () => DownedMovementController.ReattachMovementHooks(player));
                     // The invulnerability speed multiplier is applied by DownedMovementController.TickSpeedLimit.
                 }
 
@@ -105,6 +105,12 @@ namespace KeepMeAlive.Gameplay.Revival
                 st.RevivePromptTimer = Hud.ShowStatus(Hud.StatusKind.Invulnerable, st.InvulnerabilityTimer);
             }
             catch (Exception ex) { Plugin.LogSource.LogError($"[PostRevival] StartInvulnerabilityPeriod error: {ex.Message}"); }
+        }
+
+        private static void RestoreStep(string name, Action step)
+        {
+            try { step(); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[PostRevival] {name} error: {ex}"); }
         }
 
         private static void EndInvulnerability(Player player, RMPlayer st)
@@ -122,8 +128,9 @@ namespace KeepMeAlive.Gameplay.Revival
             GodMode.Disable(player);
             DownedMovementController.ReleaseProne(player);
             DownedMovementController.ReleaseEmptyHands(player);
-            PlayerRestorations.RestorePlayerMovement(player, forceStandingPose: false);
             DownedMovementController.ClearSpeedLimit(player);
+            // Recover the hands if still stuck.
+            PlayerRestorations.VerifyHands(player, "invulnerability ended");
 
             RevivalAuthority.NotifyEndInvulnerability(player.ProfileId);
             FikaBridge.SendPlayerStateResetPacket(player.ProfileId, isDead: false, cd);

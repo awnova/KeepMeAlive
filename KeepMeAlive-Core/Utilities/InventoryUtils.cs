@@ -237,7 +237,20 @@ namespace KeepMeAlive.Utilities
             }
 
             var task = controller.TryRunNetworkTransaction(operation);
-            while (!task.IsCompleted) yield return null;
+            float elapsed = 0f;
+            while (!task.IsCompleted && elapsed < RemoveTimeoutSeconds)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            // A removal with no answer would hang the revive start; past the timeout it counts as failed.
+            if (!task.IsCompleted)
+            {
+                Plugin.LogSource.LogWarning($"[{label}] Removal of {item.Id} got no answer in {RemoveTimeoutSeconds}s; treating it as failed");
+                onDone?.Invoke(false);
+                yield break;
+            }
 
             bool failed = task.IsFaulted || task.Result == null || task.Result.Failed;
             if (failed)
@@ -246,6 +259,8 @@ namespace KeepMeAlive.Utilities
             }
             onDone?.Invoke(!failed);
         }
+
+        private const float RemoveTimeoutSeconds = 5f;
 
         // True when the player's inventory controller has an operation in flight, such as an
         // item apply/use or pending equip.
@@ -274,7 +289,8 @@ namespace KeepMeAlive.Utilities
 
         // Yields until the player has no active inventory event or timeoutSeconds elapses.
         // Proceeds after the timeout.
-        public static IEnumerator WaitForInventoryFree(Player player, float timeoutSeconds, string label)
+        // onDone(true) if the inventory came free, false on timeout.
+        public static IEnumerator WaitForInventoryFree(Player player, float timeoutSeconds, string label, Action<bool> onDone = null)
         {
             float elapsed = 0f;
             while (player != null && HasAnyActiveInventoryEvent(player) && elapsed < timeoutSeconds)
@@ -283,10 +299,43 @@ namespace KeepMeAlive.Utilities
                 yield return null;
             }
 
-            if (player != null && elapsed >= timeoutSeconds && HasAnyActiveInventoryEvent(player))
+            bool free = player == null || !HasAnyActiveInventoryEvent(player);
+            if (!free)
             {
-                Plugin.LogSource.LogWarning($"[{label}] WaitForInventoryFree timed out after {timeoutSeconds}s; proceeding anyway.");
+                Plugin.LogSource.LogWarning($"[{label}] WaitForInventoryFree timed out after {timeoutSeconds}s ({DescribeActiveEvents(player)}; {PlayerUtils.DescribeHands(player)})");
             }
+            onDone?.Invoke(free);
+        }
+
+        // As WaitForInventoryFree, and until Player.ProcessStatus is idle. Use before a hands change.
+        // onDone(true) when idle, false on timeout.
+        public static IEnumerator WaitForHandsIdle(Player player, float timeoutSeconds, string label, Action<bool> onDone = null)
+        {
+            float elapsed = 0f;
+            while (player != null && (HasAnyActiveInventoryEvent(player) || !PlayerUtils.IsHandsIdle(player)) && elapsed < timeoutSeconds)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            bool idle = player == null || (!HasAnyActiveInventoryEvent(player) && PlayerUtils.IsHandsIdle(player));
+            if (!idle)
+            {
+                Plugin.LogSource.LogWarning($"[{label}] WaitForHandsIdle timed out after {timeoutSeconds}s ({DescribeActiveEvents(player)}; {PlayerUtils.DescribeHands(player)})");
+            }
+            onDone?.Invoke(idle);
+        }
+
+        private static string DescribeActiveEvents(Player player)
+        {
+            var events = (player?.InventoryController as ItemController)?.ActiveEvents;
+            if (events == null) return "events=none";
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var activeEvent in events)
+            {
+                if (activeEvent != null) names.Add(activeEvent.GetType().Name);
+            }
+            return names.Count == 0 ? "events=none" : $"events={string.Join(",", names)}";
         }
 
         public static bool IsMedOrFoodDepleted(Item item)

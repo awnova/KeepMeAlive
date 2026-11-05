@@ -113,12 +113,20 @@ namespace KeepMeAlive.Gameplay.Revival
             {
                 // Wait out any inventory operation in flight here, not inside the consume coroutines, so the target and
                 // reviver are checked again right before anything is spent.
-                yield return InventoryUtils.WaitForInventoryFree(itemOwner, ConsumeWaitSeconds, $"{sourceName}Revive");
+                bool inventoryFree = false;
+                yield return InventoryUtils.WaitForInventoryFree(itemOwner, ConsumeWaitSeconds, $"{sourceName}Revive", ok => inventoryFree = ok);
                 if (RaidEnded()) yield break;
                 if (!stillValid())
                 {
                     RevivalAuthority.NotifyReviveStartCancelled(targetId);
                     onDenied(null, Color.yellow);
+                    yield break;
+                }
+                // Still busy: the host would reject a removal now. Nothing is spent; the player tries again.
+                if (!inventoryFree)
+                {
+                    RevivalAuthority.NotifyReviveStartCancelled(targetId);
+                    onDenied(PlayerFacingMessages.Revive.InventoryBusyCanceled, Color.yellow);
                     yield break;
                 }
             }

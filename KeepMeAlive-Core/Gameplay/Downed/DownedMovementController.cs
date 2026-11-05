@@ -245,6 +245,8 @@ namespace KeepMeAlive.Gameplay.Downed
                 player.SetEmptyHands(null);
                 AddIgnored(WeaponSelectCommands);
                 HookHandsGuard(player);
+                // After the guard hook, which stops any watchdog when it hooks a new player.
+                ArmDropWatchdog(player, "downed");
 
                 RevivalDebugLog.LogDebug($"[DownedMovement] ForceEmptyHands applied for {player.ProfileId}");
             }
@@ -280,6 +282,68 @@ namespace KeepMeAlive.Gameplay.Downed
             player.SetEmptyHands(result => callback?.Invoke(result.Complete
                 ? new Result<IHandsController>(result.Value)
                 : new Result<IHandsController>(null, result.Error)));
+            ArmDropWatchdog(player, "refused hands change");
+        }
+
+        //====================[ Drop Watchdog ]====================
+        // A firearm dropped mid-shot only hides on the shot's fire-end event. If that never comes the hands change
+        // stalls and later equips are skipped as the same item. Past the timeout I fast-forward, as the game does on death.
+        private const float DropWatchdogSeconds = 1.5f;
+        private static Coroutine _dropWatchdog;
+
+        private static void ArmDropWatchdog(Player player, string reason)
+        {
+            if (player == null || !player.IsYourPlayer || Plugin.StaticCoroutineRunner == null) return;
+            StopDropWatchdog();
+            _dropWatchdog = Plugin.StaticCoroutineRunner.StartCoroutine(DropWatchdog(player, reason));
+        }
+
+        private static void StopDropWatchdog()
+        {
+            if (_dropWatchdog != null && Plugin.StaticCoroutineRunner != null)
+                Plugin.StaticCoroutineRunner.StopCoroutine(_dropWatchdog);
+            _dropWatchdog = null;
+        }
+
+        // The old controller is gone. The game's queue may hold the change a bit longer, which isn't a stall.
+        private static bool HasEmptyHands(Player player) =>
+            PlayerUtils.IsEmptyHanded(player) && player.HandsController != null && !player.HandsController.Destroyed;
+
+        // Bleeding out only; the revive draws the weapon on purpose.
+        private static bool WantsEmptyHands(Player player) =>
+            PlayerUtils.IsAlive(player)
+            && RMSession.TryGetPlayerState(player.ProfileId, out var st)
+            && st.State == RMState.BleedingOut;
+
+        private static IEnumerator DropWatchdog(Player player, string reason)
+        {
+            float elapsed = 0f;
+            while (elapsed < DropWatchdogSeconds)
+            {
+                if (player == null || HasEmptyHands(player) || !WantsEmptyHands(player))
+                {
+                    _dropWatchdog = null;
+                    yield break;
+                }
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            _dropWatchdog = null;
+
+            if (player == null || HasEmptyHands(player) || !WantsEmptyHands(player)) yield break;
+
+            Plugin.LogSource.LogWarning($"[DownedMovement] Hands did not empty within {DropWatchdogSeconds}s ({reason}; {PlayerUtils.DescribeHands(player)}); fast-forwarding the current hands operations");
+            PlayerRestorations.FastForward(player);
+
+            // Empty hands asked for again if the fast-forward left anything else.
+            yield return null;
+            if (player == null || !WantsEmptyHands(player)) yield break;
+            Plugin.LogSource.LogInfo($"[DownedMovement] After fast-forward: {PlayerUtils.DescribeHands(player)}");
+            if (!PlayerUtils.IsEmptyHanded(player) && PlayerUtils.IsHandsIdle(player))
+            {
+                try { player.SetEmptyHands(null); }
+                catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] Empty-hands retry error: {ex.Message}"); }
+            }
         }
 
         // Backstop for swaps that bypass every hands call I patch: other mods destroy the controller and spawn their
@@ -305,6 +369,7 @@ namespace KeepMeAlive.Gameplay.Downed
             if (_handsRestoreRoutine != null && Plugin.StaticCoroutineRunner != null)
                 Plugin.StaticCoroutineRunner.StopCoroutine(_handsRestoreRoutine);
             _handsRestoreRoutine = null;
+            StopDropWatchdog();
         }
 
         private static void OnGuardHandsChanged(Player.AbstractHandsController previous, Player.AbstractHandsController next)
@@ -335,6 +400,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (player == null || !player.IsYourPlayer) return;
 
                 CancelLocalManagedActions(player);
+                ExitWeaponPostures(player);
 
                 ForceProne(player);
                 ForceEmptyHands(player);
@@ -348,7 +414,7 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (mc.StationaryWeapon != null)
                 {
                     mc.StationaryWeapon.Unlock(player.ProfileId);
-                    if (mc.StationaryWeapon.Item == player.HandsController.Item)
+                    if (player.HandsController != null && mc.StationaryWeapon.Item == player.HandsController.Item)
                     {
                         mc.StationaryWeapon.Show();
                         player.ReleaseHand();
@@ -428,6 +494,19 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 Plugin.LogSource.LogWarning($"[DownedMovement] MedsController.Remove failed: {ex.Message}");
             }
+        }
+
+        // The game ends both when it takes the hands for the inventory.
+        private static void ExitWeaponPostures(Player player)
+        {
+            var mc = player.MovementContext;
+            if (mc == null) return;
+
+            try { if (mc.IsInMountedState) mc.ExitMountedState(); }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] ExitMountedState failed: {ex.Message}"); }
+
+            try { mc.SetBlindFire(0); }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] SetBlindFire(0) failed: {ex.Message}"); }
         }
 
         private static IEnumerator ReassertProneNextFrame(Player player)

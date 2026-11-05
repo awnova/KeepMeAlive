@@ -32,6 +32,8 @@ namespace KeepMeAlive.Patches
                 if (!__instance.IsYourPlayer) BodyInteractableRuntime.EnsureAttached(__instance);
                 DownedDragController.Tick(__instance);
                 DownedVoiceController.Tick(__instance);
+                // Host only: takes a ghosted player off the bots again.
+                GhostMode.Tick(__instance);
 
                 if (!__instance.IsYourPlayer) return;
 

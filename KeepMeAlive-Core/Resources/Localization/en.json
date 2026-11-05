@@ -73,6 +73,7 @@
   "Revive.MissingStimCanceled": "Stim missing. Revive canceled.",
   "Revive.Disabled": "This kind of revive is disabled",
   "Revive.MissingDefibCanceled": "Defib missing. Revive canceled.",
+  "Revive.InventoryBusyCanceled": "Inventory busy. Revive canceled, try again.",
 
   "ReviveDenied.AuthorizationFailed": "Revive authorization failed",
   "ReviveDenied.TeamFallback": "Revive denied",

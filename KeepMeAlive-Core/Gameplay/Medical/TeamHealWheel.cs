@@ -44,7 +44,8 @@ namespace KeepMeAlive.Gameplay.Medical
 
         // The end half of EFT's toggle key combinations (InputManager.Init), plus the other end commands: what a key or
         // button sends when it is let go. They pass, so nothing held before the wheel opened stays stuck.
-        private static readonly HashSet<ECommand> Releases = new HashSet<ECommand>
+        // SilentInventoryCommandBlockPatch uses it too.
+        internal static readonly HashSet<ECommand> Releases = new HashSet<ECommand>
         {
             ECommand.EndShooting,
             ECommand.EndAlternativeShooting,

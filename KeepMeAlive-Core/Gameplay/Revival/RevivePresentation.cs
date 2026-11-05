@@ -16,6 +16,7 @@ namespace KeepMeAlive.Gameplay.Revival
     {
         private const float EquipTimeoutSeconds = 2f;
         private const float EquipSettleSeconds = 0.3f;
+        private const float UnconsciousHandsWaitSeconds = 3f;
 
         //====================[ Blur ]====================
         // CameraManager.Blur is a plain toggle (not refcounted), so every call goes through here
@@ -55,8 +56,23 @@ namespace KeepMeAlive.Gameplay.Revival
         private static IEnumerator DelayedInventoryOpen(Player player, RMPlayer st)
         {
             yield return new WaitForSeconds(1.0f);
+
+            // Onto empty hands only; a pose on a firearm still dropping lands mid-hide.
+            float waited = 0f;
+            while (player != null && st.State == RMState.BleedingOut && st.IsSilentInventoryAnimActive
+                   && !(PlayerUtils.IsEmptyHanded(player) && PlayerUtils.HasUsableHands(player)) && waited < UnconsciousHandsWaitSeconds)
+            {
+                waited += Time.deltaTime;
+                yield return null;
+            }
+
             st.UnconsciousOpenCoroutine = null;
             if (player == null || st.State != RMState.BleedingOut || !st.IsSilentInventoryAnimActive) yield break;
+            if (!PlayerUtils.HasUsableHands(player))
+            {
+                ReviveDebug.Log("Unconscious_InvOpenSkipped", player.ProfileId, true, PlayerUtils.DescribeHands(player));
+                yield break;
+            }
 
             player.SetInventoryOpened(true);
             ReviveDebug.Log("Unconscious_InvOpen", player.ProfileId, true, null);
@@ -86,31 +102,66 @@ namespace KeepMeAlive.Gameplay.Revival
             st.IsSilentInventoryAnimActive = true;
 
             //====================[ 1. Gun In Hand ]====================
+            // The hands settle first; an equip queued on a change in flight is skipped or stalls.
+            bool idle = false;
+            yield return InventoryUtils.WaitForHandsIdle(player, EquipTimeoutSeconds, "ReviveEffects_GunEquip", ok => idle = ok);
+            if (!IsStillReviving(player, st)) yield break;
+            if (!idle || !PlayerUtils.HasUsableHands(player))
+            {
+                yield return PlayerRestorations.RecoverHandsCoroutine(player, "revive draw", equipWeapon: false);
+                if (!IsStillReviving(player, st)) yield break;
+            }
+
+            // The equip block is open only for this request.
+            bool equipped = false;
+            string equipError = null;
             st.AllowWeaponEquipForReviveAnim = true;
             try
             {
-                yield return InventoryUtils.WaitForInventoryFree(player, 2f, "ReviveEffects_GunEquip");
-                if (!IsStillReviving(player, st)) yield break;
-
-                // Wait for the hands transition callback before continuing the revive animation.
-                bool equipped = false;
-                player.SetFirstAvailableItem((Result<IHandsController> _) => equipped = true);
-                float elapsed = 0f;
-                while (!equipped && elapsed < EquipTimeoutSeconds)
+                player.SetFirstAvailableItem((Result<IHandsController> result) =>
                 {
-                    elapsed += Time.deltaTime;
-                    yield return null;
-                }
+                    equipped = true;
+                    equipError = result.Error;
+                });
             }
             finally
             {
                 st.AllowWeaponEquipForReviveAnim = false;
             }
 
+            float elapsed = 0f;
+            while (!equipped && elapsed < EquipTimeoutSeconds)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            if (!IsStillReviving(player, st)) yield break;
+
+            // On a Fika client the change stays queued until the host confirms; wait that out.
+            if (equipped && string.IsNullOrEmpty(equipError))
+            {
+                yield return InventoryUtils.WaitForHandsIdle(player, EquipTimeoutSeconds, "ReviveEffects_GunEquipSettle");
+                if (!IsStillReviving(player, st)) yield break;
+            }
+
+            // The pose goes on usable hands only.
+            if (!equipped || !string.IsNullOrEmpty(equipError) || !PlayerUtils.HasUsableHands(player))
+            {
+                Plugin.LogSource.LogWarning($"[ReviveAnim] Revive draw did not settle (callback={equipped} error='{equipError}'; {PlayerUtils.DescribeHands(player)})");
+                yield return PlayerRestorations.RecoverHandsCoroutine(player, "revive draw result", equipWeapon: false);
+                if (!IsStillReviving(player, st)) yield break;
+            }
+
             //====================[ 2. Inventory Pose ]====================
             // Apply the pose after GamePlayerOwner.SetHandsController finishes the hands change.
             yield return new WaitForSeconds(EquipSettleSeconds);
             if (!IsStillReviving(player, st)) yield break;
+            if (!PlayerUtils.HasUsableHands(player))
+            {
+                ReviveDebug.Log("ReviveEffects_PoseSkipped", player.ProfileId, true, PlayerUtils.DescribeHands(player));
+                st.ReviveEffectsCoroutine = null;
+                yield break;
+            }
 
             player.SetInventoryOpened(true);
             st.ReviveEffectsCoroutine = null;
@@ -131,9 +182,13 @@ namespace KeepMeAlive.Gameplay.Revival
             bool hadSilentInventory = st.IsSilentInventoryAnimActive;
             try
             {
-                if (hadSilentInventory)
+                // The game's flag counts too. Not under the real inventory screen.
+                if ((hadSilentInventory || player.IsInventoryOpened) && !InventoryScreenShowing())
                 {
                     player.SetInventoryOpened(false);
+                    // A weapon still drawing ignores the close; send it again once the hands settle.
+                    if (!PlayerUtils.HasUsableHands(player))
+                        Plugin.StaticCoroutineRunner.StartCoroutine(CloseAgainWhenHandsSettle(player, st));
                 }
                 SetBlur(st, false);
             }
@@ -147,6 +202,29 @@ namespace KeepMeAlive.Gameplay.Revival
                 st.AllowWeaponEquipForReviveAnim = false;
                 st.IsSilentInventoryAnimActive = false;
             }
+        }
+
+        private const float CloseAgainWaitSeconds = 3f;
+
+        private static IEnumerator CloseAgainWhenHandsSettle(Player player, RMPlayer st)
+        {
+            float waited = 0f;
+            while (player != null && !PlayerUtils.HasUsableHands(player) && waited < CloseAgainWaitSeconds)
+            {
+                waited += Time.deltaTime;
+                yield return null;
+            }
+
+            // Not if a new presentation opened it since, or the inventory screen is up.
+            if (player == null || !PlayerUtils.IsAlive(player) || st.IsSilentInventoryAnimActive || InventoryScreenShowing()) yield break;
+            try { player.SetInventoryOpened(false); }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[ReviveAnim] Re-close of the inventory pose failed: {ex.Message}"); }
+        }
+
+        private static bool InventoryScreenShowing()
+        {
+            var mgr = EFT.UI.Screens.EftScreenManager.Instance;
+            return mgr != null && mgr.CheckCurrentScreen(EFT.UI.Screens.EEftScreenType.Inventory);
         }
 
         private static void StopCoroutine(Coroutine routine)

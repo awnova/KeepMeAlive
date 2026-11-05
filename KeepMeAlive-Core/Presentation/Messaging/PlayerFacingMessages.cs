@@ -120,6 +120,7 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string MissingStimCanceled => T("Revive.MissingStimCanceled");
             public static string Disabled => T("Revive.Disabled");
             public static string MissingDefibCanceled => T("Revive.MissingDefibCanceled");
+            public static string InventoryBusyCanceled => T("Revive.InventoryBusyCanceled");
         }
 
         //====================[ Revive Denials ]====================

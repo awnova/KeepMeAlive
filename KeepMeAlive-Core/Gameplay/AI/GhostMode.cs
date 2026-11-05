@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Comfort.Common;
 using EFT;
+using UnityEngine;
 
 namespace KeepMeAlive.Gameplay.AI
 {
@@ -22,6 +23,7 @@ namespace KeepMeAlive.Gameplay.AI
         {
             _ghostedPlayers.Clear();
             _groupsToRestore.Clear();
+            _nextSweep.Clear();
         }
 
         private static bool _sainReflectionInitialized;
@@ -172,111 +174,189 @@ namespace KeepMeAlive.Gameplay.AI
                 }
 
                 RevivalDebugLog.LogDebug($"[GhostMode] Enter for {player.Profile.Nickname} ({playerId}) - HOST");
-
-                int removedBots = 0;
-                int removedGroups = 0;
-                int clearedGoals = 0;
-
-                if (!_groupsToRestore.TryGetValue(playerId, out var restoreList))
-                {
-                    restoreList = new List<BotsGroup>();
-                    _groupsToRestore[playerId] = restoreList;
-                }
-
-                // Remove from every BotsGroup FIRST
-                foreach (var g in FindAllBotGroups())
-                {
-                    if (g == null || !g.Enemies.ContainsKey(player)) continue;
-
-                    try
-                    {
-                        g.RemoveEnemy(player, EBotEnemyCause.initial);
-                        if (!restoreList.Contains(g)) restoreList.Add(g);
-                        removedGroups++;
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.LogSource.LogWarning($"[GhostMode] g.RemoveEnemy error: {ex.Message}");
-                    }
-                }
-
-                // SAIN removal runs BEFORE vanilla CalcGoal so SAIN's CalcGoal patches cannot re-select the downed player.
-                int sainRemoved = 0;
-                sainRemoved += RemoveFromSAIN(playerId);
-                if (sainRemoved > 0)
-                {
-                    RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
-                }
-
-                // Remove the player from BotEnemiesController, clear GoalEnemy/LastEnemy, and stop shooting systems.
-                foreach (var bo in FindAllBotOwners())
-                {
-                    try
-                    {
-                        var ec = bo?.EnemiesController;
-                        if (ec != null && ec.EnemyInfos.ContainsKey(player))
-                        {
-                            ec.Remove(player);
-                            removedBots++;
-                        }
-
-                        var mem = bo?.Memory;
-                        if (mem == null) continue;
-
-                        bool wasTargeting = false;
-
-                        if (mem.GoalEnemy?.Person?.ProfileId == playerId)
-                        {
-                            mem.GoalEnemy = null;    // fires LoseTarget() + OnGoalEnemyChanged
-                            clearedGoals++;
-                            wasTargeting = true;
-                        }
-                        
-                        if (mem.LastEnemy?.Person?.ProfileId == playerId)
-                        {
-                            mem.LastEnemy = null;    // prevents SuppressShoot fallback
-                        }
-
-                        if (wasTargeting)
-                        {
-                            try
-                            {
-                                bo.ShootData?.EndShoot();
-                            }
-                            catch (Exception ex)
-                            {
-                                Plugin.LogSource.LogWarning($"[GhostMode] EndShoot error: {ex.Message}");
-                            }
-
-                            try
-                            {
-                                bo.CalcGoal();
-                            }
-                            catch (Exception ex)
-                            {
-                                Plugin.LogSource.LogWarning($"[GhostMode] CalcGoal error: {ex.Message}");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.LogSource.LogWarning($"[GhostMode] bot cleanup error: {ex.Message}");
-                    }
-                }
-
-                RevivalDebugLog.LogDebug($"[GhostMode] Enter done (HOST): removed from {removedBots} bot controllers, {removedGroups} groups, cleared {clearedGoals} GoalEnemy refs");
-
-                // SAIN removal (runs AFTER vanilla so SAIN can clean up any remaining EnemyInfo refs)
-                sainRemoved += RemoveFromSAIN(playerId);
-                if (sainRemoved > 0)
-                {
-                    RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
-                }
+                LogSainPatchStateOnce();
+                Sweep(player, reSweep: false);
+                _nextSweep[playerId] = Time.time + ResweepSeconds;
             }
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[GhostMode] Enter error: {ex.Message}");
             }
+        }
+
+        //====================[ Re-sweep ]====================
+        // A bot's queued state can put the player back after the first sweep. The host sweeps again every
+        // ResweepSeconds and logs each bot that had them back, and where.
+        private const float ResweepSeconds = 1f;
+        private static readonly Dictionary<string, float> _nextSweep = new();
+
+        // From each human player's tick; acts on the host only.
+        public static void Tick(Player player)
+        {
+            if (player == null || _ghostedPlayers.Count == 0) return;
+            string playerId = player.ProfileId;
+            if (!_ghostedPlayers.Contains(playerId)) return;
+            if (_nextSweep.TryGetValue(playerId, out var next) && Time.time < next) return;
+            _nextSweep[playerId] = Time.time + ResweepSeconds;
+
+            try
+            {
+                if (!IsHost) return;
+                Sweep(player, reSweep: true);
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"[GhostMode] Re-sweep error: {ex.Message}");
+            }
+        }
+
+        // Takes the player off every bot. reSweep: anything found was re-acquired, and is logged.
+        private static void Sweep(Player player, bool reSweep)
+        {
+            string playerId = player.ProfileId;
+            int removedBots = 0;
+            int removedGroups = 0;
+            int clearedGoals = 0;
+
+            if (!_groupsToRestore.TryGetValue(playerId, out var restoreList))
+            {
+                restoreList = new List<BotsGroup>();
+                _groupsToRestore[playerId] = restoreList;
+            }
+
+            // Remove from every BotsGroup FIRST
+            foreach (var g in FindAllBotGroups())
+            {
+                if (g == null || !g.Enemies.ContainsKey(player)) continue;
+
+                try
+                {
+                    g.RemoveEnemy(player, EBotEnemyCause.initial);
+                    if (!restoreList.Contains(g)) restoreList.Add(g);
+                    removedGroups++;
+                }
+                catch (Exception ex)
+                {
+                    Plugin.LogSource.LogWarning($"[GhostMode] g.RemoveEnemy error: {ex.Message}");
+                }
+            }
+
+            // SAIN removal runs BEFORE vanilla CalcGoal so SAIN's CalcGoal patches cannot re-select the downed player.
+            int sainRemoved = RemoveFromSAIN(playerId);
+            if (sainRemoved > 0 && !reSweep)
+            {
+                RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
+            }
+
+            // Remove the player from BotEnemiesController, clear GoalEnemy/LastEnemy, and stop shooting systems.
+            foreach (var bo in FindAllBotOwners())
+            {
+                try
+                {
+                    string held = null;
+
+                    var ec = bo?.EnemiesController;
+                    if (ec != null && ec.EnemyInfos.ContainsKey(player))
+                    {
+                        ec.Remove(player);
+                        removedBots++;
+                        held = "EnemyInfos";
+                    }
+
+                    var mem = bo?.Memory;
+                    if (mem == null)
+                    {
+                        if (reSweep && held != null) LogReacquired(bo, player, held);
+                        continue;
+                    }
+
+                    bool wasTargeting = false;
+
+                    if (mem.GoalEnemy?.Person?.ProfileId == playerId)
+                    {
+                        mem.GoalEnemy = null;    // fires LoseTarget() + OnGoalEnemyChanged
+                        clearedGoals++;
+                        wasTargeting = true;
+                        held = held == null ? "GoalEnemy" : held + "+GoalEnemy";
+                    }
+
+                    if (mem.LastEnemy?.Person?.ProfileId == playerId)
+                    {
+                        mem.LastEnemy = null;    // prevents SuppressShoot fallback
+                        held = held == null ? "LastEnemy" : held + "+LastEnemy";
+                    }
+
+                    if (reSweep && held != null) LogReacquired(bo, player, held);
+
+                    if (wasTargeting)
+                    {
+                        try
+                        {
+                            bo.ShootData?.EndShoot();
+                        }
+                        catch (Exception ex)
+                        {
+                            Plugin.LogSource.LogWarning($"[GhostMode] EndShoot error: {ex.Message}");
+                        }
+
+                        try
+                        {
+                            bo.CalcGoal();
+                        }
+                        catch (Exception ex)
+                        {
+                            Plugin.LogSource.LogWarning($"[GhostMode] CalcGoal error: {ex.Message}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.LogSource.LogWarning($"[GhostMode] bot cleanup error: {ex.Message}");
+                }
+            }
+
+            if (reSweep)
+            {
+                if (removedGroups > 0)
+                    Plugin.LogSource.LogWarning($"[GhostMode] Re-sweep: {player.Profile?.Nickname} ({playerId}) was back on {removedGroups} bot group enemy list(s)");
+            }
+            else
+            {
+                RevivalDebugLog.LogDebug($"[GhostMode] Enter done (HOST): removed from {removedBots} bot controllers, {removedGroups} groups, cleared {clearedGoals} GoalEnemy refs");
+            }
+
+            // SAIN removal (runs AFTER vanilla so SAIN can clean up any remaining EnemyInfo refs)
+            sainRemoved = RemoveFromSAIN(playerId);
+            if (sainRemoved > 0 && !reSweep)
+            {
+                RevivalDebugLog.LogDebug($"[GhostMode] SAIN: removed from {sainRemoved} SAIN bot enemy controllers");
+            }
+        }
+
+        private static void LogReacquired(BotOwner bot, Player player, string held)
+        {
+            string botName = bot?.Profile?.Nickname ?? bot?.ProfileId ?? "?";
+            Plugin.LogSource.LogWarning($"[GhostMode] Re-sweep: bot {botName} had ghosted {player.Profile?.Nickname} ({player.ProfileId}) back in {held}; removed");
+        }
+
+        // GhostModeSAINPatch silently patches nothing if SAIN's tryAddEnemy moved; logged once.
+        private static bool _sainPatchLogged;
+
+        private static void LogSainPatchStateOnce()
+        {
+            if (_sainPatchLogged) return;
+            _sainPatchLogged = true;
+            EnsureSAINReflection();
+            if (!_sainAvailable) return;
+
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "SAIN")?
+                .GetType("SAIN.SAINComponent.Classes.EnemyClasses.EnemyListController");
+            var method = type != null ? HarmonyLib.AccessTools.Method(type, "tryAddEnemy", new[] { typeof(IPlayer) }) : null;
+            if (method == null)
+                Plugin.LogSource.LogWarning("[GhostMode] SAIN is loaded but EnemyListController.tryAddEnemy(IPlayer) was not found: SAIN bots can re-add downed players (only the re-sweep removes them)");
+            else
+                Plugin.LogSource.LogInfo("[GhostMode] SAIN tryAddEnemy patch target found");
         }
 
         public static void EnterGhostModeById(string playerId)
@@ -314,6 +394,7 @@ namespace KeepMeAlive.Gameplay.AI
 
             _groupsToRestore.TryGetValue(playerId, out var restoreList);
             _groupsToRestore.Remove(playerId);
+            _nextSweep.Remove(playerId);
 
             try
             {
@@ -386,6 +467,7 @@ namespace KeepMeAlive.Gameplay.AI
         {
             _ghostedPlayers.Remove(playerId);
             _groupsToRestore.Remove(playerId);
+            _nextSweep.Remove(playerId);
         }
 
         //====================[ Bot Enumeration ]====================

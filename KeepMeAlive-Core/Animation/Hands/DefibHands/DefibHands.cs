@@ -118,8 +118,31 @@ namespace KeepMeAlive.Animation.Hands.DefibHands
             if (!session.StowedWeapon) return;
             // Downed or dead: the downed flow (or death) deals with the hands.
             if (!PlayerUtils.IsAliveAndStanding(player)) return;
-            // Still empty (or still being made empty): nobody else has taken the hands, so the weapon goes back.
-            if (PlayerUtils.IsEmptyHanded(player) || player.ProcessStatus != Player.EProcessStatus.None) player.TrySetLastEquippedWeapon();
+            if (PlayerUtils.IsHandsIdle(player))
+            {
+                // Still empty: nobody else has taken the hands, so the weapon goes back.
+                if (PlayerUtils.IsEmptyHanded(player)) player.TrySetLastEquippedWeapon();
+                return;
+            }
+            // Still being emptied: restore once that change ends.
+            Plugin.StaticCoroutineRunner.StartCoroutine(RestoreWhenHandsIdle(player));
+        }
+
+        private const float RestoreWaitSeconds = 2f;
+
+        private static System.Collections.IEnumerator RestoreWhenHandsIdle(Player player)
+        {
+            bool idle = false;
+            yield return InventoryUtils.WaitForHandsIdle(player, RestoreWaitSeconds, "DefibHandsRestore", ok => idle = ok);
+            if (!PlayerUtils.IsAliveAndStanding(player)) yield break;
+
+            if (!idle || !PlayerUtils.HasUsableHands(player))
+            {
+                // The stow stalled; recover the hands and restore.
+                yield return PlayerRestorations.RecoverHandsCoroutine(player, "defib weapon restore", equipWeapon: true);
+                yield break;
+            }
+            if (PlayerUtils.IsEmptyHanded(player)) player.TrySetLastEquippedWeapon();
         }
     }
 }

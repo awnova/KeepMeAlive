@@ -815,6 +815,19 @@ namespace KeepMeAlive.Animation.Ragdoll
         // on with their motion).
         private static void StopPhysics(Session session, bool still)
         {
+            // GiveBack always runs, so a throw above can't leave the local body animator off.
+            try
+            {
+                ReleasePhysics(session, still);
+            }
+            finally
+            {
+                GiveBack(session);
+            }
+        }
+
+        private static void ReleasePhysics(Session session, bool still)
+        {
             DestroyHand(session);
             DestroyMotors(session);
 
@@ -876,15 +889,28 @@ namespace KeepMeAlive.Animation.Ragdoll
             // is what stretched them, and the tops it detached are what keep the pelvis out of this. A body that was only
             // animated has none, and this would put its pelvis back at the standing height, lifting it off the ground.
             if (still && session.Bodies.Count > 0) RestoreBoneOffsets(session);
-            ReattachToRoot(session);
+        }
 
-            ResumeLocalAnimation(session.Player, session);
-            if (session.View != null)
+        // Gives the body back to the game; each step on its own.
+        private static void GiveBack(Session session)
+        {
+            try { ReattachToRoot(session); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[BodyRagdoll] Reattach to root failed: {ex}"); }
+
+            try { ResumeLocalAnimation(session.Player, session); }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[BodyRagdoll] Resume local animation failed: {ex}"); }
+
+            try
             {
-                session.View.enabled = false;
-                UnityEngine.Object.Destroy(session.View);
-                session.View = null;
+                if (session.View != null)
+                {
+                    session.View.enabled = false;
+                    UnityEngine.Object.Destroy(session.View);
+                }
             }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[BodyRagdoll] Camera release failed: {ex}"); }
+            session.View = null;
+
             session.Bodies.Clear();
             session.BodyByPart.Clear();
             session.Joints.Clear();
@@ -945,6 +971,7 @@ namespace KeepMeAlive.Animation.Ragdoll
         private static void HandBack(Session session, ExitPose pose, float blendDelay)
         {
             var player = session.Player;
+            bool reattached = false;
             try
             {
                 // Animated: stops where it is (for a death the corpse ragdoll carries on from there).
@@ -990,6 +1017,7 @@ namespace KeepMeAlive.Animation.Ragdoll
                 // Keep: the corpse ragdoll carries on from the pose as it is.
 
                 // With the animator back on it rewrites every bone transform next frame; BlendOut eases into it.
+                reattached = true;
                 ReattachToEft(player, session);
 
                 // A target for the blend that does not depend on the animator rewriting the bones before it does.
@@ -1001,6 +1029,12 @@ namespace KeepMeAlive.Animation.Ragdoll
             catch (Exception ex)
             {
                 Plugin.LogSource.LogError($"[BodyRagdoll] Exit failed: {ex}");
+                // The body still goes back to EFT's animation.
+                if (!reattached)
+                {
+                    try { ReattachToEft(player, session); }
+                    catch (Exception ex2) { Plugin.LogSource.LogError($"[BodyRagdoll] Reattach to EFT after a failed exit failed: {ex2}"); }
+                }
             }
         }
     }
