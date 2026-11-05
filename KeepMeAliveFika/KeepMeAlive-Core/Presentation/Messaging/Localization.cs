@@ -76,7 +76,7 @@ namespace KeepMeAlive.Presentation.Messaging
             string text = TryText(code, key);
             if (text != null) return text;
 
-            if (FirstReport(key)) Plugin.LogSource.LogError($"[Localization] Missing key {key} in en.json");
+            if (FirstReport(key)) Plugin.LogSource.LogError($"[Localization] Missing key {key} in the shared Localizations/en.json or the embedded English");
             return key;
         }
 

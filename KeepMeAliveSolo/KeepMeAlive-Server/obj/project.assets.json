@@ -535,7 +535,7 @@
     "C:\\Users\\awnov\\.nuget\\packages\\": {}
   },
   "project": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "restore": {
       "projectUniqueName": "C:\\Users\\awnov\\RiderProjects\\KeepMeAlive\\KeepMeAliveSolo\\KeepMeAlive-Server\\KeepMeAlive.Server.csproj",
       "projectName": "KeepMeAlive.Server",

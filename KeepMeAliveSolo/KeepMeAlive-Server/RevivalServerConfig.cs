@@ -133,7 +133,7 @@ public sealed class StimReviveConfig : ReviveTypeConfig
     {
         Enabled = true,
         HoldSeconds = 8f,
-        LivesCost = 3,
+        LivesCost = 1,
         RequireStim = false,
         ConsumeStim = false,
         RestoreBodyParts = true,

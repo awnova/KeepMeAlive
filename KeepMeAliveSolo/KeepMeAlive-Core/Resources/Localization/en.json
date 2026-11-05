@@ -17,7 +17,7 @@
   "Hud.NotEnoughLives": "Not enough lives",
 
   "Revive.MissingStimCanceled": "Stim missing. Revive canceled.",
-  "Revive.Disabled": "Self-revive is disabled",
+  "Revive.Disabled": "This kind of revive is disabled",
   "Revive.InventoryBusyCanceled": "Inventory busy. Revive canceled, try again.",
 
   "ReviveDenied.AuthorizationFailed": "Revive authorization failed",
@@ -25,7 +25,7 @@
   "ReviveDenied.Cooldown": "Player on cooldown",
   "ReviveDenied.OutOfLives": "Out of lives",
 
-  "PostRevive.CooldownEnded": "Revival cooldown ended - you can now self-revive",
+  "PostRevive.CooldownEnded": "Revival cooldown ended - you can now be revived",
   "PostRevive.InvulnerabilityEnded": "Invulnerability ended. Revival cooldown: {0:F0}s",
   "PostRevive.CooldownEffectName": "Revive cooldown"
 }
