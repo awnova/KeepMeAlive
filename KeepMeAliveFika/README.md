@@ -1,0 +1,79 @@
+# KeepMeAlive (Fika)
+
+This is the co-op build and requires Fika. Playing alone? Use the [Solo build](../KeepMeAliveSolo/README.md) instead; do not install both.
+
+KeepMeAlive adds a second chance after lethal damage in **SPT 4.1.x**. Your PMC can enter a timed critical state and be revived by you or a teammate before bleeding out. Co-op revives use Fika.
+
+The release includes a BepInEx client plugin and an SPT server mod. The server manages gameplay settings, revive lives and cooldowns, and the revival item trader offer. The client provides the downed state and revive interactions.
+
+Based on the original revival mod by **KaikiNoodles** and **thuynguyentrungdang**.
+
+## Features
+
+- Self and teammate revives, with configurable timing, lives, and item use.
+- Configurable recovery after revival, including health restoration, status effects, and temporary invulnerability.
+- Teammate medical assistance for health, bleeds, fractures, comfort effects, and nutrition.
+- Configurable downed movement, protections, and an optional chance that a headshot kills outright.
+
+## Requirements
+
+- SPT 4.1.x
+- Fika on the server and each co-op client
+
+Disable Fika's built-in revive system in the server configuration; it conflicts with KeepMeAlive.
+
+## Install
+
+Drop both the `BepInEx` and `SPT_Runtime` folders from the release into your SPT installation, keeping their folder structure.
+
+KeepMeAlive creates its server and client configuration files the first time each is started.
+
+All KMA client mods (KeepMeAlive, KMA Body Drag, KMA Quick Wheel) install into the one `BepInEx/plugins/KeepMeAlive` folder and share `BepInEx/plugins/KeepMeAlive/Localizations`: one `<code>.json` per language (EFT language code, e.g. `ru`) holding every mod's keys. Each mod reads only the keys it uses and ignores the rest. The master text is `Localization/en.json` in this repo; new keys from any KMA mod go there too.
+
+## Play
+
+When downed, hold the self-revive key (default `F`) to attempt a self-revive. A teammate looking at your downed PMC gets two options: **Support** and **Loot**. Tapping Support starts a drag; holding it starts a defibrillator revive. The server controls revive timing, item requirements, life costs, and recovery effects.
+
+When you go down, your body falls limp. Move to recover and crawl while downed. Teammates see your body fall; your own player is not ragdolled.
+
+To give up, hold the configured key (default `Backspace`) for two seconds while downed and not being revived.
+
+A teammate can tap **Support** on your downed PMC to drag you along. The dragger crouches, puts away their weapon, and holds you by the shoulders. Dragging ends if they stand, go prone, take something in hand, turn away from you, get too far away, go down, or your body rolls out of their hands. A revive by anyone else also ends the drag, and a body being dragged has no interaction menu for anyone. The dragger can revive the body they are holding by holding the interact key (shown on the bottom strip as "Hold [key] Revive"): their right hand takes a stim pen from their chest and holds it in your shoulder for the whole revive while the left keeps hold, then they put you down when it is done (a cancelled revive just puts the pen away and the drag carries on). You stay limp where you are released until you move.
+
+The defib (template ID `5c052e6986f7746b207bc3c9`) is fixed and not configurable. Therapist always sells it; by default the price is 200,000 roubles at loyalty level 2.
+
+## Configuration
+
+Server gameplay settings are in `user/mods/KeepMeAlive/config.json` inside `SPT_Runtime`. The server creates this file with defaults and shares its settings with clients. Restart the server after editing it.
+
+### Revive types
+
+`Gameplay` has three revive sections, each with its own settings: **Self** (you stab yourself with a stim), **Team** (a teammate who is dragging you stabs you with a stim) and **Defib** (a teammate who is not dragging you uses the defibrillator). Shared downed-state settings (bleed-out time, lives pool, crawl speed) are in `Gameplay.Downed`.
+
+Each of `Self`, `Team` and `Defib` has: `Enabled`, `HoldSeconds`, `LivesCost`, `AllowInsufficientLives` (off by default: with fewer lives left than `LivesCost`, but at least one, the revive still works and uses up the rest, so the next down can't be revived), `RestoreBodyParts`, `RestorePercent` (Head, Chest, Stomach, Arms, Legs), `RemoveLightBleeds`, `RemoveHeavyBleeds`, `RemoveLegFractures`, `RemoveArmFractures`, `InvulnerabilityDurationSeconds`, `InvulnerabilitySpeedPercent`, `CooldownSeconds`, `ApplyContusionOnRevive`, `ContusionDurationSeconds`, `ApplyPainOnRevive` and `PainDurationSeconds`. `Defib` also has `RequireDefib` (the reviver must carry a defib) and `ConsumeDefib` (uses one up when they have one). `Self` and `Team` also have `RequireStim` (off by default: the reviver must carry a stim) and `ConsumeStim` (off by default: the stim is deleted when the revive starts, and only applies with `RequireStim` on). `Gameplay.StimItemIds` lists the stim template ids in priority order (the first one the reviver carries is used); leave it empty for the game's Adrenaline stim. An old single `StimItemId` is moved into the list. The config schema is version 1; an older `config.json` is rewritten with defaults for the new sections.
+
+Client-only options, including the self-revive and give-up keys and tinnitus audio, are in `BepInEx/config/com.keepmealive.fika.cfg`.
+
+## Troubleshooting
+
+- **Revive options are unavailable:** Check the server log for `[SyncConfig]` warnings and confirm `SPT_Runtime/user/mods/KeepMeAlive/config.json` exists.
+- **Self-revive is unavailable:** Check that it is enabled in the server config, you have enough lives, and you carry the configured item.
+- **Teammate revive does not work:** Check that the reviver meets the configured requirements, and Fika's built-in revive system is disabled.
+
+## Build from source
+
+Run `build.ps1` in this folder to build both projects in Release mode. The package is assembled under `Build/KeepMeAliveFika`, and the client plugin is also copied to the configured SPT install. The client project expects SPT at `C:\SPT` by default; set the `SPTBaseDir` MSBuild property to your SPT client installation path when building elsewhere.
+
+## Credits
+These projects are what made this possible.
+- Original revival mod: **KaikiNoodles**
+- Bring Me To Life: **thuynguyentrungdang**
+- Spectate UI: **Zephyros**
+- Testing: **constance68w**
+- SPT-AKI and Fika development teams
+
+KeepMeAlive is not affiliated with or endorsed by Battlestate Games.
+
+## License
+
+MIT. See [LICENSE](../LICENSE).

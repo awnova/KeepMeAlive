@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v10.0": {
-      "KeepMeAlive.Server/1.0.0": {
+      "KeepMeAlive.Server/1.1.0": {
         "dependencies": {
           "SPTushonka.Common": "4.1.6",
           "SPTushonka.DI": "4.1.6",
@@ -182,7 +182,7 @@
     }
   },
   "libraries": {
-    "KeepMeAlive.Server/1.0.0": {
+    "KeepMeAlive.Server/1.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

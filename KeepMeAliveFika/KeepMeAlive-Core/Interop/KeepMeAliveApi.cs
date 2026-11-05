@@ -11,7 +11,7 @@ namespace KeepMeAlive.Interop
     {
         public const int ApiVersion = 1;
 
-        // Why KeepMeAlive owns the local player's input right now ("downed", "team-heal wheel", ...), or null when it
+        // Why KeepMeAlive owns the local player's input right now ("downed", "revive animation", ...), or null when it
         // doesn't. Cheap: safe to call every frame.
         public static string LocalBusyReason() => ExternalInputOwners.LocalBusyReason();
 

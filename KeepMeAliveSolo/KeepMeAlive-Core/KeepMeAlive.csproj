@@ -119,9 +119,9 @@
     <MakeDir Directories="$(RuntimePluginDir)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BuildPluginDir)" SkipUnchangedFiles="false" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(RuntimePluginDir)" SkipUnchangedFiles="false" />
-    <!-- A loose copy of the embedded English text, as the template translators copy to <code>.json beside it. -->
-    <Copy SourceFiles="Resources\Localization\en.json" DestinationFolder="$(BuildPluginDir)\Localizations" SkipUnchangedFiles="false" />
-    <Copy SourceFiles="Resources\Localization\en.json" DestinationFolder="$(RuntimePluginDir)\Localizations" SkipUnchangedFiles="false" />
+    <!-- The shared KMA master text (KeepMeAlive + Wheel + Body Drag keys): one Localizations/ folder and one file per language for every KMA mod. -->
+    <Copy SourceFiles="..\..\Localization\en.json" DestinationFolder="$(BuildPluginDir)\Localizations" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="..\..\Localization\en.json" DestinationFolder="$(RuntimePluginDir)\Localizations" SkipUnchangedFiles="false" />
     <!-- The old layout put the DLL straight in plugins/; left there, BepInEx would load the mod twice. -->
     <Delete Files="$(SPTBaseDir)\BepInEx\plugins\KeepMeAlive.dll;$(SPTBaseDir)\BepInEx\plugins\KeepMeAlive-Locales\en.json" ContinueOnError="true" />
   </Target>

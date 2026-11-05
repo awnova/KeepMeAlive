@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <Version>1.1.0</Version>
     <AssemblyName>KeepMeAlive.Server</AssemblyName>
     <RootNamespace>KeepMeAlive.Server</RootNamespace>
   </PropertyGroup>
