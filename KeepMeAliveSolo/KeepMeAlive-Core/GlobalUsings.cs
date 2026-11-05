@@ -1,0 +1,17 @@
+global using KeepMeAlive.Animation.Ragdoll;
+global using KeepMeAlive.Animation.Hands;
+global using KeepMeAlive.Animation.Shared;
+global using KeepMeAlive.Configuration;
+global using KeepMeAlive.Diagnostics;
+global using KeepMeAlive.Gameplay.Downed;
+global using KeepMeAlive.Gameplay.Revival;
+global using KeepMeAlive.Gameplay.AI;
+global using KeepMeAlive.Interop;
+global using KeepMeAlive.Patches;
+global using KeepMeAlive.Presentation.HUD;
+global using KeepMeAlive.Presentation.Audio;
+global using KeepMeAlive.Presentation.Effects;
+global using KeepMeAlive.Presentation.Messaging;
+global using KeepMeAlive.Runtime.State;
+global using KeepMeAlive.Runtime.Lifecycle;
+global using KeepMeAlive.Utilities;

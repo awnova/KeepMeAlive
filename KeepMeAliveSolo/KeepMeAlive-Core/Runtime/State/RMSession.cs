@@ -1,0 +1,69 @@
+//====================[ Imports ]====================
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+namespace KeepMeAlive.Runtime.State
+{
+    //====================[ RMSession ]====================
+    // Per-raid store of revival state for the local player.
+    // Main-thread only, except RaidGeneration, which RevivalAuthority's background queue also reads.
+    // Cleared on raid start and raid end via Clear().
+    internal static class RMSession
+    {
+        public static event Action<string, RMState, RMState> PlayerStateChanged;
+
+        private static readonly Dictionary<string, RMPlayer> PlayerStates = new();
+
+        // Bumped by every Clear(). Anything async (coroutines, queued server calls) captures it before waiting and
+        // drops its result when it no longer matches, so nothing from one raid lands in the next.
+        private static int _raidGeneration;
+        public static int RaidGeneration => Volatile.Read(ref _raidGeneration);
+        public static void Clear() { Interlocked.Increment(ref _raidGeneration); PlayerStates.Clear(); }
+
+        public static bool IsPlayerCritical(string playerId) =>
+            TryGetPlayerState(playerId, out var st) && st.IsCritical;
+
+        public static RMPlayer GetPlayerState(string playerId)
+        {
+            if (!PlayerStates.TryGetValue(playerId, out var state))
+            {
+                state = new RMPlayer();
+                PlayerStates[playerId] = state;
+            }
+            return state;
+        }
+
+        public static bool TryGetPlayerState(string playerId, out RMPlayer state)
+        {
+            if (string.IsNullOrEmpty(playerId))
+            {
+                state = null;
+                return false;
+            }
+            return PlayerStates.TryGetValue(playerId, out state);
+        }
+
+        public static bool SetPlayerState(string playerId, RMState newState)
+        {
+            if (string.IsNullOrEmpty(playerId)) return false;
+
+            var state = GetPlayerState(playerId);
+            var oldState = state.State;
+            if (oldState == newState) return false;
+
+            state.State = newState;
+
+            try
+            {
+                PlayerStateChanged?.Invoke(playerId, oldState, newState);
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogSource.LogError($"RMSession.SetPlayerState event error: {ex.Message}");
+            }
+
+            return true;
+        }
+    }
+}

@@ -1,0 +1,9 @@
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\bin\Release\KeepMeAlive.deps.json
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\bin\Release\KeepMeAlive.dll
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\bin\Release\KeepMeAlive.pdb
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.csproj.AssemblyReference.cache
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.csproj.CoreCompileInputs.cache
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.sourcelink.json
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.dll
+C:\Users\awnov\RiderProjects\KeepMeAlive\KeepMeAliveSolo\KeepMeAlive-Core\obj\Release\KeepMeAlive.pdb

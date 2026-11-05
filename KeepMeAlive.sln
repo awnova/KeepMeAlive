@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -8,6 +8,12 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive", "KeepMeAliveFika\KeepMeAlive-Core\KeepMeAlive.csproj", "{9FFDEB55-52E6-4C56-8009-82D44AE72523}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive.Server", "KeepMeAliveFika\KeepMeAlive-Server\KeepMeAlive.Server.csproj", "{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "KeepMeAliveSolo", "KeepMeAliveSolo", "{69C6A593-5ED0-4B5B-BC92-85E491AB0DF7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive.Solo", "KeepMeAliveSolo\KeepMeAlive-Core\KeepMeAlive.csproj", "{B10EFC66-63F7-4D67-911A-93E55BF83634}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeepMeAlive.Server.Solo", "KeepMeAliveSolo\KeepMeAlive-Server\KeepMeAlive.Server.csproj", "{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -43,6 +49,30 @@ Global
 		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x64.Build.0 = Release|Any CPU
 		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x86.ActiveCfg = Release|Any CPU
 		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42}.Release|x86.Build.0 = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|x64.Build.0 = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Debug|x86.Build.0 = Debug|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|x64.ActiveCfg = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|x64.Build.0 = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|x86.ActiveCfg = Release|Any CPU
+		{B10EFC66-63F7-4D67-911A-93E55BF83634}.Release|x86.Build.0 = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|x64.Build.0 = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Debug|x86.Build.0 = Debug|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|x64.ActiveCfg = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|x64.Build.0 = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|x86.ActiveCfg = Release|Any CPU
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,5 +80,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{9FFDEB55-52E6-4C56-8009-82D44AE72523} = {58B59482-4DCF-CA4A-AB81-74D3809A9CF6}
 		{AC7AB0EC-FD14-4608-BC60-37A107D1EA42} = {58B59482-4DCF-CA4A-AB81-74D3809A9CF6}
+		{B10EFC66-63F7-4D67-911A-93E55BF83634} = {69C6A593-5ED0-4B5B-BC92-85E491AB0DF7}
+		{BD8BC1FD-0E25-4719-CD71-48B218E2FB53} = {69C6A593-5ED0-4B5B-BC92-85E491AB0DF7}
 	EndGlobalSection
 EndGlobal
