@@ -702,12 +702,11 @@ namespace KeepMeAlive.Animation.Hands
             clip.Sample(_stimFrame, out _stimBody, out _stimChest, out _stimChestWeight, _fingerPose);
         }
 
-        // The hand starts back with the needle in the body: it comes out, once per jab.
+        // The hand starts back with the needle in the body: it comes out, once per jab. Silent: the cry is for going in.
         private void PullNeedle()
         {
             if (_stim != StimPhase.Back || !_stimNeedleIn) return;
             _stimNeedleIn = false;
-            DownedVoiceController.OnStimNeedle(_revivee);
         }
 
         // The revive's claim on the body is gone while the body is still bleeding out: it was cancelled.

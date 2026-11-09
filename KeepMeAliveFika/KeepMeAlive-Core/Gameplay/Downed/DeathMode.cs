@@ -74,6 +74,14 @@ namespace KeepMeAlive.Gameplay.Downed
                 return false;
             }
 
+            // No revive type, self or teammate, can be paid for with the lives left: this hit is final instead of
+            // downing the player for nothing.
+            if (st != null && !RevivePolicy.HasLivesForAnyRevive(st.LivesRemaining))
+            {
+                RevivalDebugLog.LogDebug($"[DeathMode] {playerId} out of lives (livesRemaining={st.LivesRemaining}); allowing death from {damageType}.");
+                return false;
+            }
+
             RevivalDebugLog.LogDebug($"[DeathMode] PREVENT: {playerId} lethal {damageType} -> enter critical.");
             return true;
         }

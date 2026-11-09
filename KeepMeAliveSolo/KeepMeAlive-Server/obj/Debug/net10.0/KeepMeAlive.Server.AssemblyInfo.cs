@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("KeepMeAlive.Server")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.1.0+3c90e63a9a26a7f21609699eff2a7af819d65dcb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.1.0+c86c0d49ca65e85ee0ecb935514ad1f497abceb7")]
 [assembly: System.Reflection.AssemblyProductAttribute("KeepMeAlive.Server")]
 [assembly: System.Reflection.AssemblyTitleAttribute("KeepMeAlive.Server")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.1.0.0")]

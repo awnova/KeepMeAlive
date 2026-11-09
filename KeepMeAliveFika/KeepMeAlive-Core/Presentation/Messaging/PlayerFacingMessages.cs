@@ -47,7 +47,7 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string On => T("Hud.On");
             public static string Off => T("Hud.Off");
 
-            public static string LivesLeft(int count) => Count("Hud.LivesLeft", count);
+            public static string LivesLeft(int count) => Gameplay.Revival.RevivePolicy.IsUnlimited(count) ? F("Hud.LivesLeft.Other", "∞") : Count("Hud.LivesLeft", count);
             public static string Cost(int count) => Count("Hud.Cost", count);
             public static string NotEnoughLives => T("Hud.NotEnoughLives");
         }

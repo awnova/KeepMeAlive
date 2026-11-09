@@ -45,7 +45,7 @@ Server gameplay settings are in `user/mods/KeepMeAlive/config.json` inside `SPT_
 
 ### Downed state
 
-`Gameplay.Downed` has: `MaxLivesPerRaid` (5), `CriticalStateSeconds` (180), `DownedMovementSpeedPercent` (50), `ApplyContusionOnDowned` (on), `ApplyStunOnDowned` (on), `BlockUiWhenDowned` (on) and `UnconsciousOnDowned` (off).
+`Gameplay.Downed` has: `MaxLivesPerRaid` (5, 0 = unlimited), `CriticalStateSeconds` (180), `DownedMovementSpeedPercent` (50), `ApplyContusionOnDowned` (on), `ApplyStunOnDowned` (on), `BlockUiWhenDowned` (on) and `UnconsciousOnDowned` (off).
 
 ### Self-revive
 

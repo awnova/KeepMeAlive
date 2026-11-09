@@ -211,8 +211,7 @@ namespace KeepMeAlive.Presentation.Audio
             }
         }
 
-        // The stim's needle going into the body or coming out of it during a self-revive:
-        // a knock like the others.
+        // The stim's needle going into the body during a self-revive: a knock like the others. Pulling it out is silent.
         public static void OnStimNeedle(Player player)
         {
             if (!PlayerUtils.IsLocalPlayer(player) || player.Speaker == null) return;

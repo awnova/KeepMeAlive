@@ -97,7 +97,7 @@ namespace KeepMeAlive.Gameplay.Downed
         private SelfStimHands _stimHands;
         private float _stimHandFrame = -1f;
         private bool _stimPen;
-        // Where the needle is: in from the hold's start, out from the put away's (the voice cries out at each).
+        // Where the needle is: in from the hold's start, out from the put away's (the voice cries out going in only).
         private enum Needle { Out, In, Withdrawn }
         private Needle _stimNeedle;
         // The sequence's roll put the body down where it is from the player's root: it stays there (the root anchor would slide it).
@@ -546,8 +546,8 @@ namespace KeepMeAlive.Gameplay.Downed
             _stimHandFrame = handFrame;
             _stimPen = pen;
 
-            // A hold too short for a hold segment goes straight from the takeout to the put away: that is one knock, the
-            // withdrawal, since the needle was in and out within a frame.
+            // A hold too short for a hold segment goes straight from the takeout to the put away: that is one knock,
+            // since the needle was in and out within a frame.
             if (segment == SelfStimSequence.Segment.Hold && _stimNeedle == Needle.Out)
             {
                 _stimNeedle = Needle.In;
@@ -556,9 +556,14 @@ namespace KeepMeAlive.Gameplay.Downed
             }
             else if (segment == SelfStimSequence.Segment.PutAway && _stimNeedle != Needle.Withdrawn)
             {
-                if (_stimNeedle == Needle.Out) PlayInjectSound();
+                // Pulling the needle out is silent. Only a hold too short to have had its own start (in and out in one
+                // frame) still gets the one knock, since it never got one going in.
+                if (_stimNeedle == Needle.Out)
+                {
+                    DownedVoiceController.OnStimNeedle(_player);
+                    PlayInjectSound();
+                }
                 _stimNeedle = Needle.Withdrawn;
-                DownedVoiceController.OnStimNeedle(_player);
             }
             return true;
         }

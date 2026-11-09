@@ -34,6 +34,14 @@ namespace KeepMeAlive.Gameplay.Revival
 
         public static int LivesCost(ReviveSource source) => For(source).LivesCost;
 
+        // MaxLivesPerRaid = 0 means unlimited lives. Unlimited is a huge count, so every lives check passes and the HUD
+        // (which tests IsUnlimited) shows no number. Must match the server's RevivalStateService.StartingLives.
+        public const int UnlimitedLives = int.MaxValue;
+
+        public static bool IsUnlimited(int livesRemaining) => livesRemaining >= UnlimitedLives / 2;
+
+        public static int StartingLives(int maxLivesPerRaid) => maxLivesPerRaid <= 0 ? UnlimitedLives : maxLivesPerRaid;
+
         // Enough lives for the cost, or AllowInsufficientLives with at least one left: the revive then spends the rest and
         // the next down is final. Must match the server's RevivalStateService.HasLivesFor.
         public static bool HasLivesFor(ReviveSource source, int livesRemaining)
