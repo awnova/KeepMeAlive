@@ -16,6 +16,8 @@ namespace KeepMeAlive
     [BepInDependency("com.fika.headless", BepInDependency.DependencyFlags.SoftDependency)]
     // Soft dependency so SAIN (if installed) is already in Chainloader.PluginInfos when Awake runs.
     [BepInDependency("me.sol.sain", BepInDependency.DependencyFlags.SoftDependency)]
+    // Same for TraumaCore: DeathMode needs to know it is loaded (it never lets a shot take the head below 1 HP).
+    [BepInDependency(Plugin.TraumaCoreGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInPlugin(Plugin.PluginGuid, "KeepMeAlive", "1.1.0")]
     public class Plugin : BaseUnityPlugin
     {
@@ -30,10 +32,14 @@ namespace KeepMeAlive
         public static bool IAmDedicatedClient => FikaBridge.IsHeadless();
         public static bool SAINInstalled { get; private set; }
 
+        public const string TraumaCoreGuid = "com.hysocs.traumacore";
+        public static bool TraumaCoreInstalled { get; private set; }
+
         //====================[ Unity Lifecycle ]====================
         private void Awake()
         {
             SAINInstalled = Chainloader.PluginInfos.ContainsKey("me.sol.sain");
+            TraumaCoreInstalled = Chainloader.PluginInfos.ContainsKey(TraumaCoreGuid);
 
             LogSource = Logger;
             StaticCoroutineRunner = this;

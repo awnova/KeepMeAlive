@@ -104,8 +104,11 @@ namespace KeepMeAlive.Gameplay.Downed
                 return false;
             }
 
+            // Vanilla kills through a head at 0 HP. TraumaCore caps every shot so the head keeps at least 1 HP and
+            // kills through its own brain hit instead, so there the last bullet hit on the head is what counts.
             if (damageType != EDamageType.Bullet || player.LastDamagedBodyPart != EBodyPart.Head
-                || healthController.GetBodyPartHealth(EBodyPart.Head, true).Current >= 1f)
+                || (!Plugin.TraumaCoreInstalled
+                    && healthController.GetBodyPartHealth(EBodyPart.Head, true).Current >= 1f))
             {
                 return false;
             }
