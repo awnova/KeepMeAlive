@@ -47,12 +47,36 @@ namespace KeepMeAlive.Gameplay.Revival
 
         public static int LivesCost(ReviveSource source) => For(source).LivesCost;
 
+        // MaxLivesPerRaid = 0 means unlimited lives. Unlimited is a huge count, so every lives check passes and the HUD
+        // (which tests IsUnlimited) shows no number. Must match the server's RevivalStateService.StartingLives.
+        public const int UnlimitedLives = int.MaxValue;
+
+        public static bool IsUnlimited(int livesRemaining) => livesRemaining >= UnlimitedLives / 2;
+
+        public static int StartingLives(int maxLivesPerRaid) => maxLivesPerRaid <= 0 ? UnlimitedLives : maxLivesPerRaid;
+
         // Enough lives for the cost, or AllowInsufficientLives with at least one left: the revive then spends the rest and
         // the next down is final. Must match the server's RevivalStateService.HasLivesFor.
         public static bool HasLivesFor(ReviveSource source, int livesRemaining)
         {
             var config = For(source);
             return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
+        }
+
+        private static readonly ReviveSource[] AllSources = { ReviveSource.Self, ReviveSource.Team, ReviveSource.Defib };
+
+        // Whether any enabled revive type (Self, Team, Defib) could still be paid for with these lives. With every type
+        // disabled the lives can't decide anything, so this stays true and the downed state works as before.
+        public static bool HasLivesForAnyRevive(int livesRemaining)
+        {
+            bool anyEnabled = false;
+            foreach (var source in AllSources)
+            {
+                if (!IsEnabled(source)) continue;
+                anyEnabled = true;
+                if (HasLivesFor(source, livesRemaining)) return true;
+            }
+            return !anyEnabled;
         }
 
         // The lives this revive actually takes, for the HUD: the cost, capped at what is left.

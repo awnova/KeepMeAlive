@@ -70,7 +70,7 @@ The tables below show the server settings, their defaults, and what they control
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `MaxLivesPerRaid` | 5 | Lives you start each raid with. Revives spend lives. |
+| `MaxLivesPerRaid` | 5 | Lives you start each raid with. Revives spend lives. `0` = unlimited lives. |
 | `CriticalStateSeconds` | 180 | Time before you bleed out. |
 | `DownedMovementSpeedPercent` | 50 | Crawl speed as a percentage of normal movement speed. |
 | `ApplyContusionOnDowned` | On | Applies contusion when you go down. |

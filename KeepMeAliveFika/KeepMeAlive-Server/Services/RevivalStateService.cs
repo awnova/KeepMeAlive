@@ -154,7 +154,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
     {
         lock (_sync)
         {
-            int maxLives = configService.Config.Gameplay.Downed.MaxLivesPerRaid;
+            int maxLives = StartingLives();
             foreach (var id in playerIds)
             {
                 var entry = GetOrCreateLocked(id);
@@ -165,6 +165,15 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
     }
 
     //====================[ Helpers ]====================
+    // MaxLivesPerRaid = 0 means unlimited. Must match the client's RevivePolicy.StartingLives.
+    private const int UnlimitedLives = int.MaxValue;
+
+    private int StartingLives()
+    {
+        int max = configService.Config.Gameplay.Downed.MaxLivesPerRaid;
+        return max <= 0 ? UnlimitedLives : max;
+    }
+
     private RevivalStateEntry GetOrCreateLocked(string playerId)
     {
         if (!_entries.TryGetValue(playerId, out var entry))
@@ -173,7 +182,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             {
                 PlayerId = playerId,
                 LastUpdatedUnixSeconds = Now(),
-                LivesRemaining = configService.Config.Gameplay.Downed.MaxLivesPerRaid
+                LivesRemaining = StartingLives()
             };
             _entries[playerId] = entry;
         }

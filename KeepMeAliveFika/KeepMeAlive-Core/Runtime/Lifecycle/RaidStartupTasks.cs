@@ -16,7 +16,7 @@ namespace KeepMeAlive.Runtime.Lifecycle
         {
             // Read the server's per-raid lives value asynchronously.
             var st = RMSession.GetPlayerState(localPlayer.ProfileId);
-            st.LivesRemaining = SyncedServerConfigStore.Config.Gameplay.Downed.MaxLivesPerRaid;
+            st.LivesRemaining = RevivePolicy.StartingLives(SyncedServerConfigStore.Config.Gameplay.Downed.MaxLivesPerRaid);
             Plugin.StaticCoroutineRunner.StartCoroutine(FetchLivesCoroutine(localPlayer.ProfileId));
 
             WarnIfFikaReviveEnabled();

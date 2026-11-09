@@ -12,7 +12,7 @@ namespace KeepMeAlive.Runtime.Lifecycle
         public static void OnLocalRaidStart(Player localPlayer)
         {
             var st = RMSession.GetPlayerState(localPlayer.ProfileId);
-            st.LivesRemaining = SyncedServerConfigStore.Config.Gameplay.Downed.MaxLivesPerRaid;
+            st.LivesRemaining = RevivePolicy.StartingLives(SyncedServerConfigStore.Config.Gameplay.Downed.MaxLivesPerRaid);
 
             DownedMovementController.ScrubDownedInputLocks();
 

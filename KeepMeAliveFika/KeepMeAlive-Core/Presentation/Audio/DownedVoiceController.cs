@@ -262,10 +262,10 @@ namespace KeepMeAlive.Presentation.Audio
             }
         }
 
-        // The stim's needle going into the body or coming out of it (a revive's jab, the dragger's or the player's own):
-        // a knock like the others. Only the owner of the body says it; every peer's copy gets it from Fika. A completed
-        // revive has already left the bleed-out (Reviving) by the time the dragger's hand draws the needle out, and the
-        // voice was handed back to the game; the cry is still the owner's.
+        // The stim's needle going into the body (a revive's jab, the dragger's or the player's own): a knock like the
+        // others. Pulling it out makes no sound. Only the owner of the body says it; every peer's copy gets it from Fika.
+        // The revive may already have left the bleed-out (Reviving) by the time the needle goes in; the cry is still
+        // the owner's.
         public static void OnStimNeedle(Player player)
         {
             if (!PlayerUtils.IsLocalPlayer(player) || player.Speaker == null) return;

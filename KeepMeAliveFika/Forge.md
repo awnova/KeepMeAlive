@@ -2,7 +2,7 @@
 
 Based on the original revival mod by **KaikiNoodles** and **kobethuy**.
 
-> ***Fika** is required! Disable Fika’s built-in revive system in the server configuration; it conflicts with KeepMeAlive.*
+> ***Fika** is required! This is the **Fika** version, built for co-op. Disable Fika’s built-in revive system in the server configuration; it conflicts with KeepMeAlive. Playing single-player without Fika? Use KeepMeAlive Solo instead. Don’t install both.*
 
 ## KeepMeAlive {.tabset}
 
@@ -77,7 +77,7 @@ The tables below show the server settings, their defaults, and what they control
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `MaxLivesPerRaid` | 5 | Lives each player starts with. Revives spend lives. |
+| `MaxLivesPerRaid` | 5 | Lives each player starts with. Revives spend lives. `0` = unlimited lives. |
 | `CriticalStateSeconds` | 180 | Time before a downed player bleeds out. |
 | `DownedMovementSpeedPercent` | 50 | Crawl speed as a percentage of normal movement speed. |
 | `ApplyContusionOnDowned` | On | Applies contusion when a player goes down. |

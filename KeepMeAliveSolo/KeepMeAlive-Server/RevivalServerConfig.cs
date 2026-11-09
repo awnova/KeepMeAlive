@@ -72,7 +72,7 @@ public sealed class DownedConfig
     {
         CriticalStateSeconds = Math.Max(1f, CriticalStateSeconds);
         DownedMovementSpeedPercent = Math.Clamp(DownedMovementSpeedPercent, 0f, 100f);
-        MaxLivesPerRaid = Math.Max(1, MaxLivesPerRaid);
+        MaxLivesPerRaid = Math.Max(0, MaxLivesPerRaid); // 0 = unlimited lives
     }
 }
 
