@@ -21,8 +21,10 @@ namespace KeepMeAlive.Presentation.HUD
     {
         //====================[ Types ]====================
         internal enum StatusKind { Bleeding, BeingRevived, Reviving, Invulnerable }
-        internal enum HoldKind { SelfRevive, GiveUp, ReviveTeammate, Heal }
+        internal enum HoldKind { SelfRevive, GiveUp, ReviveTeammate, Heal, Redeploy }
         internal enum StripState { Hidden, Available, NoLives, NeedsStim, NeedsDefib, SelfReviveOff }
+        // The redeploy item on the downed player's own strip; Hidden when redeploy is off.
+        internal enum RedeployStrip { Hidden, Available, NoLives }
         internal enum SpectateHint { Hidden, Available, Active }
         internal enum WheelStrip { Hidden, Categories, Items }
 
@@ -72,6 +74,7 @@ namespace KeepMeAlive.Presentation.HUD
         internal static readonly Color DimColor = Hex(0x4B5563);
         private static readonly Color Cyan = Hex(0x4FD1E0);
         private static readonly Color Blue = Hex(0x5AA9FF);
+        private static readonly Color Amber = Hex(0xF5A524);
         private const string GoldTag = "#E5B358";
         private const string TextTag = "#E1DFD6";
         private const string GreyTag = "#9CA3AF";
@@ -104,6 +107,8 @@ namespace KeepMeAlive.Presentation.HUD
 
         private static StripState _stripState = StripState.Hidden;
         private static int _stripCost;
+        private static RedeployStrip _redeployStrip = RedeployStrip.Hidden;
+        private static int _redeployCost;
         // Set while the local player drags a body: the strip is then the one revive prompt, on the game's interact key.
         private static string _stripInteractKey;
         // Looking at a downed teammate: "Tap [key] Drag  Hold [key] Revive  [inventory key] Loot" (whichever are offered), while
@@ -227,6 +232,13 @@ namespace KeepMeAlive.Presentation.HUD
             _stripInteractKey = null;
         }
 
+        // The redeploy item next to self-revive on the downed player's own strip.
+        internal static void SetRedeployStrip(RedeployStrip state, int cost = 0)
+        {
+            _redeployStrip = state;
+            _redeployCost = cost;
+        }
+
         // The dragger's strip: "Hold [interact key] Revive" for the body in their hands (state says whether it can be afforded).
         internal static void SetDraggerStrip(StripState state, int cost, string interactKey)
         {
@@ -301,6 +313,7 @@ namespace KeepMeAlive.Presentation.HUD
         internal static void HideStrip()
         {
             _stripState = StripState.Hidden;
+            _redeployStrip = RedeployStrip.Hidden;
             _stripInteractKey = null;
             _hintKey = null;
             _hintLootKey = null;
@@ -589,6 +602,7 @@ namespace KeepMeAlive.Presentation.HUD
                 HoldKind.SelfRevive => Blue,
                 HoldKind.GiveUp => Red,
                 HoldKind.ReviveTeammate => Cyan,
+                HoldKind.Redeploy => Amber,
                 _ => Green
             };
 
@@ -607,6 +621,7 @@ namespace KeepMeAlive.Presentation.HUD
                     HoldKind.SelfRevive => PlayerFacingMessages.HudLabels.RevivingYourself,
                     HoldKind.GiveUp => PlayerFacingMessages.HudLabels.GivingUp,
                     HoldKind.ReviveTeammate => PlayerFacingMessages.HudLabels.Reviving,
+                    HoldKind.Redeploy => PlayerFacingMessages.HudLabels.Redeploying,
                     _ => PlayerFacingMessages.HudLabels.Healing
                 };
 
@@ -642,11 +657,12 @@ namespace KeepMeAlive.Presentation.HUD
 
             var selfKey = KeepMeAliveSettings.SELF_REVIVAL_KEY.Value;
             var giveUpKey = KeepMeAliveSettings.GIVE_UP_KEY.Value;
-            string key = $"{_stripState}|{_stripCost}|{_stripInteractKey}|{hint}|{_hintKey}|{_hintDrag}|{_hintRevive}|{_hintCost}|{_hintLootKey}|{selfKey}|{giveUpKey}|{_spectateHint}|{_spectateHeadcam}|{_spectateNightVision}";
+            var redeployKey = KeepMeAliveSettings.REDEPLOY_KEY.Value;
+            string key = $"{_redeployStrip}|{_redeployCost}|{redeployKey}|{_stripState}|{_stripCost}|{_stripInteractKey}|{hint}|{_hintKey}|{_hintDrag}|{_hintRevive}|{_hintCost}|{_hintLootKey}|{selfKey}|{giveUpKey}|{_spectateHint}|{_spectateHeadcam}|{_spectateNightVision}";
             if (key != _stripKey)
             {
                 _stripKey = key;
-                _strip.SetText(BuildStripText(selfKey, giveUpKey), true);
+                _strip.SetText(BuildStripText(selfKey, giveUpKey, redeployKey), true);
             }
         }
 
@@ -666,7 +682,7 @@ namespace KeepMeAlive.Presentation.HUD
             _strip.SetText(sb.ToString(), true);
         }
 
-        private static string BuildStripText(KeyCode selfKey, KeyCode giveUpKey)
+        private static string BuildStripText(KeyCode selfKey, KeyCode giveUpKey, KeyCode redeployKey)
         {
             var sb = new System.Text.StringBuilder(200);
 
@@ -730,6 +746,8 @@ namespace KeepMeAlive.Presentation.HUD
                     break;
             }
 
+            RedeployItem(sb, redeployKey);
+
             // Between self-revive and give-up, as in the mockup.
             if (_spectateHint == SpectateHint.Available)
             {
@@ -740,6 +758,19 @@ namespace KeepMeAlive.Presentation.HUD
             sb.Append("<space=1.8em>");
             StripItem(sb, true, giveUpKey, PlayerFacingMessages.HudLabels.GiveUp);
             return sb.ToString();
+        }
+
+        // "Hold [key] Redeploy" with its life cost, or why it can't be done. Nothing when redeploy is off.
+        private static void RedeployItem(System.Text.StringBuilder sb, KeyCode redeployKey)
+        {
+            if (_redeployStrip == RedeployStrip.Hidden) return;
+
+            sb.Append("<space=1.8em>");
+            StripItem(sb, true, redeployKey, PlayerFacingMessages.HudLabels.Redeploy);
+            if (_redeployStrip == RedeployStrip.NoLives)
+                Chip(sb, PlayerFacingMessages.HudLabels.NotEnoughLives, Red.ToHex());
+            else if (_redeployCost > 0)
+                Chip(sb, PlayerFacingMessages.HudLabels.Cost(_redeployCost), GreyTag);
         }
 
         private static void HintItem(System.Text.StringBuilder sb, string how, string label)

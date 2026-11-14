@@ -5,7 +5,8 @@ using UnityEngine;
 namespace KeepMeAlive.Gameplay.Revival
 {
     //====================[ RevivePolicy ]====================
-    // One config section per revive type: Self, Team (a dragger's stim jab) and Defib (the standing defibrillator revive).
+    // One config section per revive type: Self, Team (a dragger's stim jab), Defib (the standing defibrillator revive) and
+    // Redeploy (the downed player's own gear-less respawn).
     internal static class RevivePolicy
     {
         //====================[ Policy Queries ]====================
@@ -16,6 +17,7 @@ namespace KeepMeAlive.Gameplay.Revival
             {
                 ReviveSource.Self => gameplay.Self,
                 ReviveSource.Defib => gameplay.Defib,
+                ReviveSource.Redeploy => gameplay.Redeploy,
                 _ => gameplay.Team
             };
         }
@@ -38,7 +40,7 @@ namespace KeepMeAlive.Gameplay.Revival
         public enum RequiredItem { None, Defib, Stim }
 
         // Whether the reviver must carry a stim. Only the stim revives (Self and Team) use one.
-        public static bool RequireStim(ReviveSource source) => source != ReviveSource.Defib && For(source).RequireStim;
+        public static bool RequireStim(ReviveSource source) => source is ReviveSource.Self or ReviveSource.Team && For(source).RequireStim;
 
         // Whether any stim revive needs the stim, e.g. to keep it from being looted off a downed player.
         public static bool IsStimRequiredAnywhere => RequireStim(ReviveSource.Self) || RequireStim(ReviveSource.Team);
@@ -63,9 +65,9 @@ namespace KeepMeAlive.Gameplay.Revival
             return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
         }
 
-        private static readonly ReviveSource[] AllSources = { ReviveSource.Self, ReviveSource.Team, ReviveSource.Defib };
+        private static readonly ReviveSource[] AllSources = { ReviveSource.Self, ReviveSource.Team, ReviveSource.Defib, ReviveSource.Redeploy };
 
-        // Whether any enabled revive type (Self, Team, Defib) could still be paid for with these lives. With every type
+        // Whether any enabled revive type (Self, Team, Defib, Redeploy) could still be paid for with these lives. With every type
         // disabled the lives can't decide anything, so this stays true and the downed state works as before.
         public static bool HasLivesForAnyRevive(int livesRemaining)
         {

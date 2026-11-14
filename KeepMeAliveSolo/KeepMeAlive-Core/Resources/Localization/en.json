@@ -8,6 +8,8 @@
   "Hud.GivingUp": "Giving up",
   "Hud.SelfRevive": "Self-revive",
   "Hud.GiveUp": "Give up",
+  "Hud.Redeploy": "Redeploy",
+  "Hud.Redeploying": "Redeploying",
   "Hud.Hold": "Hold",
   "Hud.NeedsStim": "Needs stim",
   "Hud.LivesLeft.One": "{0} life left",
@@ -19,6 +21,9 @@
   "Revive.MissingStimCanceled": "Stim missing. Revive canceled.",
   "Revive.Disabled": "This kind of revive is disabled",
   "Revive.InventoryBusyCanceled": "Inventory busy. Revive canceled, try again.",
+
+  "Redeploy.NoSpawn": "No spawn point found to redeploy to",
+  "Redeploy.Failed": "Redeploy failed",
 
   "ReviveDenied.AuthorizationFailed": "Revive authorization failed",
   "ReviveDenied.SelfFallback": "Revive denied by server",

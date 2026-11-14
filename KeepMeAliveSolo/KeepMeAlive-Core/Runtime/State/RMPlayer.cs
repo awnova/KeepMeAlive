@@ -5,7 +5,7 @@ using UnityEngine;
 namespace KeepMeAlive.Runtime.State
 {
     //====================[ Enums ]====================
-    public enum ReviveSource { Self = 0 }
+    public enum ReviveSource { Self = 0, Redeploy = 1 }
 
     public enum RMState
     {
@@ -77,6 +77,10 @@ namespace KeepMeAlive.Runtime.State
         public Coroutine ReviveEffectsCoroutine { get; set; }
         public Coroutine UnconsciousOpenCoroutine { get; set; }
 
+        // ReviveSource as int: 0 = Self, 1 = Redeploy. Picks the config section the post-revive effects, the
+        // invulnerability speed and the cooldown read.
+        public int ReviveRequestedSource { get; set; }
+
         //====================[ Input Tracking ]====================
         // Self-revive flow state (hold -> auth -> reviving).
         public float SelfReviveHoldTime { get; set; }
@@ -85,6 +89,14 @@ namespace KeepMeAlive.Runtime.State
         public int SelfReviveAttemptId { get; set; }
         // -1 when not holding the give-up key; otherwise seconds held.
         public float GiveUpHoldTime { get; set; } = -1f;
+        // Redeploy flow state (hold -> auth -> redeployed).
+        public bool IsRedeployHolding { get; set; }
+        // Holding the key, or past it and waiting on the server / the swap.
+        public bool IsRedeploying => IsRedeployHolding || RedeployAwaitingAuth;
+        public float RedeployHoldTime { get; set; }
+        // Hold threshold reached; server authorization (and the swap itself) is pending.
+        public bool RedeployAwaitingAuth { get; set; }
+        public int RedeployAttemptId { get; set; }
 
         //====================[ Revive Flow Markers ]====================
         // Incremented whenever a new downed cycle begins.
@@ -100,6 +112,14 @@ namespace KeepMeAlive.Runtime.State
             SelfReviveHoldTime = 0f;
             SelfReviveAwaitingAuth = false;
             IsSelfReviving = false;
+        }
+
+        // Clears the local redeploy hold/auth state.
+        public void ClearRedeployInput()
+        {
+            IsRedeployHolding = false;
+            RedeployHoldTime = 0f;
+            RedeployAwaitingAuth = false;
         }
     }
 }

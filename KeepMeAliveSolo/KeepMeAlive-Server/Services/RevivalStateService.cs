@@ -25,6 +25,11 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
         lock (_sync)
         {
             var entry = GetOrCreateLocked(playerId);
+            // A redeploy the client gave up waiting for (its answer never came) was charged here: hand the lives back.
+            if (entry.State == RevivalState.Revived && entry.Source == RevivalSourceKind.Redeploy)
+                entry.LivesRemaining = (int)Math.Min((long)int.MaxValue, (long)entry.LivesRemaining + entry.RedeployCharge);
+            entry.RedeployCharge = 0;
+
             entry.State = RevivalState.BleedingOut;
             entry.Source = RevivalSourceKind.Self;
             entry.LastUpdatedUnixSeconds = Now();
@@ -42,13 +47,13 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             var now = Now();
             const RevivalSourceKind sourceKind = RevivalSourceKind.Self;
 
-            if (!GetTypeConfig().Enabled)
+            if (!GetTypeConfig(sourceKind).Enabled)
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.FeatureDisabled, $"{sourceKind} revive is disabled by server config", entry);
 
             if (entry.CooldownUntilUnixSeconds - CooldownGraceSeconds > now)
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.Cooldown, "Player on cooldown", entry);
 
-            if (!HasLivesFor(entry.LivesRemaining))
+            if (!HasLivesFor(sourceKind, entry.LivesRemaining))
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.OutOfLives, "Player is out of lives", entry);
 
             if (entry.State == RevivalState.Reviving)
@@ -62,6 +67,39 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
 
             entry.State = RevivalState.Reviving;
             entry.Source = sourceKind;
+            entry.LastUpdatedUnixSeconds = now;
+            return RevivalAuthorityResponse.Ok(entry);
+        }
+    }
+
+    // Redeploy has no progress phase: one call checks the rules, charges the cost and marks the player Revived, so the
+    // client either gets the lives deducted and redeploys, or is denied and nothing changes.
+    public RevivalAuthorityResponse TryRedeploy(string playerId)
+    {
+        lock (_sync)
+        {
+            var entry = GetOrCreateLocked(playerId);
+            var now = Now();
+            const RevivalSourceKind sourceKind = RevivalSourceKind.Redeploy;
+
+            if (!GetTypeConfig(sourceKind).Enabled)
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.FeatureDisabled, "Redeploy is disabled by server config", entry);
+
+            if (entry.CooldownUntilUnixSeconds - CooldownGraceSeconds > now)
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.Cooldown, "Player on cooldown", entry);
+
+            if (!HasLivesFor(sourceKind, entry.LivesRemaining))
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.OutOfLives, "Player is out of lives", entry);
+
+            // A pending self-revive attempt of the same player is simply replaced.
+            if (entry.State != RevivalState.BleedingOut && entry.State != RevivalState.Reviving)
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.NotDowned, $"Player is not downed ({entry.State})", entry);
+
+            entry.State = RevivalState.Revived;
+            entry.Source = sourceKind;
+            int livesBefore = entry.LivesRemaining;
+            entry.LivesRemaining = Math.Max(0, livesBefore - GetLivesCost(sourceKind));
+            entry.RedeployCharge = livesBefore - entry.LivesRemaining;
             entry.LastUpdatedUnixSeconds = now;
             return RevivalAuthorityResponse.Ok(entry);
         }
@@ -95,7 +133,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
                 return RevivalAuthorityResponse.Fail(RevivalDeniedCode.CompleteInvalidState, $"Cannot complete revive from {entry.State}", entry);
 
             entry.State = RevivalState.Revived;
-            entry.LivesRemaining = Math.Max(0, entry.LivesRemaining - GetLivesCost());
+            entry.LivesRemaining = Math.Max(0, entry.LivesRemaining - GetLivesCost(entry.Source));
             entry.LastUpdatedUnixSeconds = Now();
             return RevivalAuthorityResponse.Ok(entry);
         }
@@ -112,7 +150,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
 
             entry.State = RevivalState.CoolDown;
             entry.LastUpdatedUnixSeconds = Now();
-            entry.CooldownUntilUnixSeconds = entry.LastUpdatedUnixSeconds + (long)Math.Max(0, GetCooldownSeconds());
+            entry.CooldownUntilUnixSeconds = entry.LastUpdatedUnixSeconds + (long)Math.Max(0, GetCooldownSeconds(entry.Source));
             return entry with { };
         }
     }
@@ -178,17 +216,19 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
 
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-    private ReviveTypeConfig GetTypeConfig() => configService.Config.Gameplay.Self;
+    private ReviveTypeConfig GetTypeConfig(RevivalSourceKind source) => source == RevivalSourceKind.Redeploy
+        ? configService.Config.Gameplay.Redeploy
+        : configService.Config.Gameplay.Self;
 
-    private float GetCooldownSeconds() => GetTypeConfig().CooldownSeconds;
+    private float GetCooldownSeconds(RevivalSourceKind source) => GetTypeConfig(source).CooldownSeconds;
 
-    private int GetLivesCost() => GetTypeConfig().LivesCost;
+    private int GetLivesCost(RevivalSourceKind source) => GetTypeConfig(source).LivesCost;
 
-    // Enough lives for the cost, or AllowInsufficientLives with at least one left; TryCompleteRevive then spends the
+    // Enough lives for the cost, or AllowInsufficientLives with at least one left; the completing call then spends the
     // rest (clamped at 0). Must match the client's RevivePolicy.HasLivesFor.
-    private bool HasLivesFor(int livesRemaining)
+    private bool HasLivesFor(RevivalSourceKind source, int livesRemaining)
     {
-        var config = GetTypeConfig();
+        var config = GetTypeConfig(source);
         return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
     }
 }

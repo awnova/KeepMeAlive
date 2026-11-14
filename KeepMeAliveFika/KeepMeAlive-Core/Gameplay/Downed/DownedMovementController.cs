@@ -588,7 +588,7 @@ namespace KeepMeAlive.Gameplay.Downed
             switch (st.State)
             {
                 case RMState.BleedingOut:
-                    bool frozen = st.IsLimp || st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth;
+                    bool frozen = st.IsLimp || st.IsBeingRevived || st.IsSelfReviving || st.SelfReviveAwaitingAuth || st.RedeployAwaitingAuth;
                     return frozen ? 0f : Mathf.Clamp01(SyncedServerConfigStore.Config.Gameplay.Downed.DownedMovementSpeedPercent / 100f);
                 case RMState.Reviving:
                     return 0f;

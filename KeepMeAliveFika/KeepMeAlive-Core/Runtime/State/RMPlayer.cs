@@ -5,7 +5,7 @@ using UnityEngine;
 namespace KeepMeAlive.Runtime.State
 {
     //====================[ Enums ]====================
-    public enum ReviveSource { Self = 0, Team = 1, Defib = 2 }
+    public enum ReviveSource { Self = 0, Team = 1, Defib = 2, Redeploy = 3 }
 
     public enum RMState
     {
@@ -39,7 +39,7 @@ namespace KeepMeAlive.Runtime.State
         // Causes the weapon-proceed-block patches to pass through so the equip can complete.
         public bool AllowWeaponEquipForReviveAnim { get; set; }
 
-        // ReviveSource as int: 0 = Self, 1 = Team, 2 = Defib
+        // ReviveSource as int: 0 = Self, 1 = Team, 2 = Defib, 3 = Redeploy
         //====================[ Session Info ]====================
         public int ReviveRequestedSource { get; set; }
         public string CurrentReviverId { get; set; } = string.Empty;
@@ -133,6 +133,14 @@ namespace KeepMeAlive.Runtime.State
         public int SelfReviveAttemptId { get; set; }
         // -1 when not holding the give-up key; otherwise seconds held.
         public float GiveUpHoldTime { get; set; } = -1f;
+        // Redeploy flow state (hold -> auth -> redeployed), owner only.
+        public bool IsRedeployHolding { get; set; }
+        // Holding the key, or past it and waiting on the server / the swap.
+        public bool IsRedeploying => IsRedeployHolding || RedeployAwaitingAuth;
+        public float RedeployHoldTime { get; set; }
+        // Hold threshold reached; server authorization (and the swap itself) is pending.
+        public bool RedeployAwaitingAuth { get; set; }
+        public int RedeployAttemptId { get; set; }
 
         //====================[ Revive Flow Markers ]====================
         // Incremented whenever a new downed cycle begins.
@@ -149,6 +157,14 @@ namespace KeepMeAlive.Runtime.State
             SelfReviveHoldTime = 0f;
             SelfReviveAwaitingAuth = false;
             IsSelfReviving = false;
+        }
+
+        // Clears the local redeploy hold/auth state.
+        public void ClearRedeployInput()
+        {
+            IsRedeployHolding = false;
+            RedeployHoldTime = 0f;
+            RedeployAwaitingAuth = false;
         }
 
         // Clears the active revive-session bookkeeping (who is reviving whom, from where).

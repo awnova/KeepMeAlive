@@ -14,6 +14,8 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             if (!RevivePolicy.IsSelfReviveEnabled) return;
             if (st.State != RMState.BleedingOut) return;
+            // A redeploy hold or swap owns the key press.
+            if (st.IsRedeploying) return;
 
             // Hold completed and the server is authorizing: the attempt is committed. A new KeyDown
             // here would start a second attempt and abandon this one (after its item was consumed).

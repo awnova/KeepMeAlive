@@ -41,6 +41,9 @@ namespace KeepMeAlive.Gameplay.Downed
         {
             if (player == null || !player.IsYourPlayer) return;
 
+            // The redeploy item on the same strip; it has its own cost and lives check.
+            RedeployInput.RefreshStrip(player);
+
             if (!RevivePolicy.IsSelfReviveEnabled)
             {
                 Hud.SetStrip(Hud.StripState.SelfReviveOff);
@@ -109,6 +112,9 @@ namespace KeepMeAlive.Gameplay.Downed
             SelfStimFlow.Cancel(player);
 
             st.ClearSelfReviveInput();
+            // A redeploy hold ends with it (one already past the key, waiting on the server, keeps going).
+            st.IsRedeployHolding = false;
+            st.RedeployHoldTime = 0f;
             st.AllowWeaponEquipForReviveAnim = false;
             Hud.HideHold();
             ClearRevivePromptTimer(st);
@@ -270,6 +276,8 @@ namespace KeepMeAlive.Gameplay.Downed
                     // Invalidates a self-revive still authorizing: the RMPlayer it captured outlives RMSession.Clear().
                     st.SelfReviveAttemptId++;
                     st.ClearSelfReviveInput();
+                    st.RedeployAttemptId++;
+                    st.ClearRedeployInput();
                 }
 
                 _nextInventoryCloseAttempt = 0f;
@@ -390,9 +398,10 @@ namespace KeepMeAlive.Gameplay.Downed
             if (player.IsYourPlayer && Time.time >= _nextInventoryCloseAttempt) CloseInventoryIfOpen(player);
 
             SelfReviveInput.Tick(player, st);
+            RedeployInput.Tick(player, st);
 
             bool gaveUp = TickGiveUp(player, st);
-            if (st.State == RMState.BleedingOut && !st.IsSelfReviving && (st.CriticalTimer <= 0f || gaveUp))
+            if (st.State == RMState.BleedingOut && !st.IsSelfReviving && !st.IsRedeploying && (st.CriticalTimer <= 0f || gaveUp))
             {
                 st.GiveUpHoldTime = -1f;
                 RevivePresentation.Stop(player, st, "BleedoutFallback");
@@ -410,11 +419,11 @@ namespace KeepMeAlive.Gameplay.Downed
         // Requires a hold to confirm the give-up action.
         private static bool TickGiveUp(Player player, RMPlayer st)
         {
-            bool eligible = player.IsYourPlayer && st.State == RMState.BleedingOut && !st.IsSelfReviving;
+            bool eligible = player.IsYourPlayer && st.State == RMState.BleedingOut && !st.IsSelfReviving && !st.IsRedeploying;
             if (!eligible)
             {
-                // Self-revive now owns the prompt; drop any active give-up hold.
-                if (st.GiveUpHoldTime >= 0f && !st.IsSelfReviving)
+                // Self-revive or redeploy now owns the prompt; drop any active give-up hold.
+                if (st.GiveUpHoldTime >= 0f && !st.IsSelfReviving && !st.IsRedeploying)
                 {
                     Hud.HideHold();
                     ClearRevivePromptTimer(st);

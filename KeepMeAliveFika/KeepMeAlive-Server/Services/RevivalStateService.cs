@@ -34,6 +34,11 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
         lock (_sync)
         {
             var entry = GetOrCreateLocked(playerId);
+            // A redeploy the client gave up waiting for (its answer never came) was charged here: hand the lives back.
+            if (entry.State == RevivalState.Revived && entry.Source == RevivalSourceKind.Redeploy)
+                entry.LivesRemaining = (int)Math.Min((long)int.MaxValue, (long)entry.LivesRemaining + entry.RedeployCharge);
+            entry.RedeployCharge = 0;
+
             entry.State = RevivalState.BleedingOut;
             entry.Source = RevivalSourceKind.Self;
             entry.ReviverId = string.Empty;
@@ -79,6 +84,49 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
             entry.State = RevivalState.Reviving;
             entry.Source = sourceKind;
             entry.ReviverId = sourceKind == RevivalSourceKind.Self ? playerId : reviverId;
+            entry.LastUpdatedUnixSeconds = now;
+            return RevivalAuthorityResponse.Ok(entry);
+        }
+    }
+
+    // Redeploy has no progress phase: one call checks the rules, charges the cost and marks the player Revived, so the
+    // client either gets the lives deducted and redeploys, or is denied and nothing changes.
+    public RevivalAuthorityResponse TryRedeploy(string playerId)
+    {
+        lock (_sync)
+        {
+            var entry = GetOrCreateLocked(playerId);
+            var now = Now();
+            const RevivalSourceKind sourceKind = RevivalSourceKind.Redeploy;
+
+            if (!GetTypeConfig(sourceKind).Enabled)
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.FeatureDisabled, "Redeploy is disabled by server config", entry);
+
+            if (entry.CooldownUntilUnixSeconds - CooldownGraceSeconds > now)
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.Cooldown, "Player on cooldown", entry);
+
+            if (!HasLivesFor(sourceKind, entry.LivesRemaining))
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.OutOfLives, "Player is out of lives", entry);
+
+            // A live team revive on this body wins; a stale or own self-revive attempt is replaced.
+            if (entry.State == RevivalState.Reviving)
+            {
+                bool stale = now - entry.LastUpdatedUnixSeconds > (long)ProgressSeconds + StaleRevivingGraceSeconds;
+                bool ownAttempt = entry.Source is RevivalSourceKind.Self or RevivalSourceKind.Redeploy;
+                if (!stale && !ownAttempt)
+                    return RevivalAuthorityResponse.Fail(RevivalDeniedCode.InvalidState, "A revive is already in progress", entry);
+            }
+            else if (entry.State != RevivalState.BleedingOut)
+            {
+                return RevivalAuthorityResponse.Fail(RevivalDeniedCode.NotDowned, $"Player is not downed ({entry.State})", entry);
+            }
+
+            entry.State = RevivalState.Revived;
+            entry.Source = sourceKind;
+            entry.ReviverId = playerId;
+            int livesBefore = entry.LivesRemaining;
+            entry.LivesRemaining = Math.Max(0, livesBefore - GetLivesCost(sourceKind));
+            entry.RedeployCharge = livesBefore - entry.LivesRemaining;
             entry.LastUpdatedUnixSeconds = now;
             return RevivalAuthorityResponse.Ok(entry);
         }
@@ -221,6 +269,7 @@ public class RevivalStateService(ISptLogger<RevivalStateService> logger, Revival
         {
             RevivalSourceKind.Self => gameplay.Self,
             RevivalSourceKind.Defib => gameplay.Defib,
+            RevivalSourceKind.Redeploy => gameplay.Redeploy,
             _ => gameplay.Team
         };
     }

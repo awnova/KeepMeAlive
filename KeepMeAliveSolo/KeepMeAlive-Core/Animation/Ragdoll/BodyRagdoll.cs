@@ -73,6 +73,10 @@ namespace KeepMeAlive.Animation.Ragdoll
 
         public static void ReleaseForDeath(Player player) => EndForPlayer(player, ExitPose.Keep);
 
+        // The body is not going to get up from this pose (a redeploy leaves it behind as a corpse): hand it straight back to
+        // EFT's animation, with no get-up roll.
+        public static void ReleaseForRedeploy(Player player) => EndForPlayer(player, ExitPose.Rest);
+
         private static void OnDeadOrUnspawn(Player player) => EndForPlayer(player, ExitPose.Rest);
 
         private static void EndForPlayer(Player player, ExitPose pose)

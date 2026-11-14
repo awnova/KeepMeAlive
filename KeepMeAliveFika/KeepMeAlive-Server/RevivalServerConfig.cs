@@ -65,6 +65,9 @@ public sealed class RevivalGameplayConfig
     public StimReviveConfig Self { get; set; } = StimReviveConfig.CreateSelfDefaults();
     public StimReviveConfig Team { get; set; } = StimReviveConfig.CreateTeamDefaults();
     public DefibReviveConfig Defib { get; set; } = DefibReviveConfig.CreateDefaults();
+    // Redeploy: the downed player pays lives to come back at the nearest spawn point without gear (the gear stays on a corpse).
+    // Off unless the server owner turns it on.
+    public RedeployReviveConfig Redeploy { get; set; } = RedeployReviveConfig.CreateDefaults();
     // Template ids of the stims that Self and Team revives use up when their RequireStim is on; the first one the reviver
     // carries is used. Empty uses the game's Adrenaline stim, which the client knows by default.
     public List<string> StimItemIds { get; set; } = [];
@@ -88,6 +91,7 @@ public sealed class RevivalGameplayConfig
         Self ??= StimReviveConfig.CreateSelfDefaults();
         Team ??= StimReviveConfig.CreateTeamDefaults();
         Defib ??= DefibReviveConfig.CreateDefaults();
+        Redeploy ??= RedeployReviveConfig.CreateDefaults();
         Protection ??= new ProtectionConfig();
         TeamHealing ??= new TeamHealingConfig();
         Development ??= new DevelopmentGameplayConfig();
@@ -96,6 +100,7 @@ public sealed class RevivalGameplayConfig
         Self.Normalize();
         Team.Normalize();
         Defib.Normalize();
+        Redeploy.Normalize();
         Protection.Normalize();
         TeamHealing.Normalize();
     }
@@ -249,6 +254,32 @@ public sealed class DefibReviveConfig : ReviveTypeConfig
     };
 }
 
+//====================[ RedeployReviveConfig ]====================
+// Redeploy: no item requirement, the cost is lives. HoldSeconds is the key hold; there is no progress phase afterwards.
+public sealed class RedeployReviveConfig : ReviveTypeConfig
+{
+    // A fresh start: full health, clean wounds, a short grace period instead of a cooldown.
+    public static RedeployReviveConfig CreateDefaults() => new()
+    {
+        Enabled = false,
+        HoldSeconds = 3f,
+        LivesCost = 1,
+        RestoreBodyParts = true,
+        RestorePercent = BodyRestorePercentConfig.CreateFullDefaults(),
+        RemoveLightBleeds = true,
+        RemoveHeavyBleeds = true,
+        RemoveLegFractures = true,
+        RemoveArmFractures = true,
+        InvulnerabilityDurationSeconds = 10f,
+        InvulnerabilitySpeedPercent = 100f,
+        CooldownSeconds = 0f,
+        ApplyContusionOnRevive = false,
+        ContusionDurationSeconds = 0f,
+        ApplyPainOnRevive = false,
+        PainDurationSeconds = 0f
+    };
+}
+
 //====================[ BodyRestorePercentConfig ]====================
 public sealed class BodyRestorePercentConfig
 {
@@ -274,6 +305,15 @@ public sealed class BodyRestorePercentConfig
         Stomach = 45f,
         Arms = 45f,
         Legs = 45f
+    };
+
+    public static BodyRestorePercentConfig CreateFullDefaults() => new()
+    {
+        Head = 100f,
+        Chest = 100f,
+        Stomach = 100f,
+        Arms = 100f,
+        Legs = 100f
     };
 
     public static BodyRestorePercentConfig CreateDefibDefaults() => new()

@@ -25,6 +25,7 @@ namespace KeepMeAlive.Networking.Fika
             manager.RegisterPacket<SelfReviveStartPacket, NetPeer>(OnSelfReviveStart);
             manager.RegisterPacket<TeamReviveStartPacket, NetPeer>(OnTeamReviveStart);
             manager.RegisterPacket<RevivedPacket, NetPeer>(OnRevived);
+            manager.RegisterPacket<RedeployPacket, NetPeer>(OnRedeploy);
             manager.RegisterPacket<PlayerStateResetPacket, NetPeer>(OnPlayerStateReset);
             manager.RegisterPacket<PlayerStateResyncPacket, NetPeer>(OnPlayerStateResync);
             manager.RegisterPacket<GetUpPacket, NetPeer>(OnGetUp);
@@ -113,6 +114,8 @@ namespace KeepMeAlive.Networking.Fika
                     // Clear self-revive inputs and cancel any active self-stim animation when team revival takes control.
                     SelfStimFlow.Cancel(reviveePlayer);
                     playerState.ClearSelfReviveInput();
+                    playerState.IsRedeployHolding = false;
+                    playerState.RedeployHoldTime = 0f;
 
                     Hud.HideHold();
                     playerState.RevivePromptTimer?.Stop();
@@ -153,6 +156,12 @@ namespace KeepMeAlive.Networking.Fika
             if (playerState.SelfReviveAwaitingAuth)
             {
                 RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {reviveeId}: ignored help from {reviverId}; self-revive authorization in progress");
+                return false;
+            }
+            // Likewise for a redeploy past its hold: the player is about to leave this body.
+            if (playerState.RedeployAwaitingAuth)
+            {
+                RevivalDebugLog.LogNetworkTrace($"[StateTrace:TeamHelpPacket] {reviveeId}: ignored help from {reviverId}; redeploy in progress");
                 return false;
             }
             playerState.CurrentReviverId = reviverId;
@@ -315,6 +324,13 @@ namespace KeepMeAlive.Networking.Fika
                 $"| reviver='{packet.reviverId}' invul={PostReviveEffects.GetInvulnDuration(source):F2}");
 
             RevivalController.FinalizeRevivalFromPacket(player, packet.playerId, packet.reviverId, source);
+        }
+
+        //====================[ Redeploy ]====================
+        private static void OnRedeploy(RedeployPacket packet, NetPeer peer)
+        {
+            RevivalDebugLog.LogNetworkTrace($"[StateTrace:RedeployPacket] {packet.playerId} left a corpse={packet.hasCorpse}");
+            RedeployController.ApplyFromPacket(packet);
         }
 
         //====================[ PlayerStateReset ]====================

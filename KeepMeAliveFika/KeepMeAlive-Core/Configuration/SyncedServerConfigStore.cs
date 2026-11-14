@@ -42,6 +42,7 @@ namespace KeepMeAlive.Configuration
         public List<string> StimItemIds { get; set; } = new();
         public SyncedDownedConfig Downed { get; set; } = new();
         public SyncedReviveTypeConfig Self { get; set; } = new();
+        public SyncedReviveTypeConfig Redeploy { get; set; } = new();
         public SyncedReviveTypeConfig Team { get; set; } = new();
         public SyncedReviveTypeConfig Defib { get; set; } = new();
         public SyncedProtectionConfig Protection { get; set; } = new();

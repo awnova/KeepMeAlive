@@ -35,6 +35,8 @@ When you take lethal damage you go down instead of dying. Your body falls limp a
 
 Hold the self-revive key (default `F`) to use a stim on yourself. If the hold completes you get back up with part of your health restored, heavy bleeds stopped, and a short period of reduced damage and slower movement. Each revive spends lives from your per-raid pool (5 by default); run out and your next down is final.
 
+If the server has Redeploy enabled, hold the redeploy key (default `R`) while downed to come back at the nearest spawn point without your gear, which stays on a corpse where you went down.
+
 To give up, press the configured key (default `Backspace`) while downed.
 
 If the bleed-out timer runs out, you die.
@@ -52,6 +54,10 @@ Server gameplay settings are in `user/mods/KeepMeAlive/config.json` inside `SPT_
 `Gameplay.Self` has: `Enabled`, `HoldSeconds` (8), `LivesCost` (1), `AllowInsufficientLives` (off by default: with fewer lives left than `LivesCost`, but at least one, the revive still works and uses up the rest, so the next down can't be revived), `RestoreBodyParts`, `RestorePercent` (Head 20, Chest, Stomach, Arms and Legs 35), `RemoveLightBleeds` (off), `RemoveHeavyBleeds` (on), `RemoveLegFractures`, `RemoveArmFractures`, `InvulnerabilityDurationSeconds` (10), `InvulnerabilitySpeedPercent` (60), `CooldownSeconds` (240), `ApplyContusionOnRevive`, `ContusionDurationSeconds` (10), `ApplyPainOnRevive` and `PainDurationSeconds` (30).
 
 It also has `RequireStim` (off by default: you must carry a stim) and `ConsumeStim` (off by default: the stim is deleted when the revive starts, and only applies with `RequireStim` on). `Gameplay.StimItemIds` lists the stim template ids in priority order (the first one you carry is used); leave it empty for the game's Adrenaline stim. An old single `StimItemId` is moved into the list.
+
+### Redeploy
+
+`Gameplay.Redeploy` (off by default) is a second way back: hold the Redeploy key (default `R`) while downed and you spend `LivesCost` lives to come back at the nearest player spawn point, with your gear left behind on a lootable corpse where you went down. You keep your secure container, melee weapon, armband and dogtag; everything else, pocket contents included, goes to the corpse. It has the same settings as `Gameplay.Self` (`HoldSeconds` 3, `LivesCost` 1, full restore, `InvulnerabilityDurationSeconds` 10, no cooldown by default) except the stim requirements, which it doesn't have.
 
 ### Protection
 

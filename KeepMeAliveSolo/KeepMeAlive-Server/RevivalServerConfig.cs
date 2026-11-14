@@ -28,6 +28,9 @@ public sealed class RevivalGameplayConfig
     public DownedConfig Downed { get; set; } = new();
     // Self revive settings.
     public StimReviveConfig Self { get; set; } = StimReviveConfig.CreateSelfDefaults();
+    // Redeploy: the downed player pays lives to come back at the nearest spawn point without gear (the gear stays on a corpse).
+    // Off unless the server owner turns it on.
+    public RedeployReviveConfig Redeploy { get; set; } = RedeployReviveConfig.CreateDefaults();
     // Template ids of the stims that Self revive uses up when RequireStim is on; the first one the player
     // carries is used. Empty uses the game's Adrenaline stim, which the client knows by default.
     public List<string> StimItemIds { get; set; } = [];
@@ -48,11 +51,13 @@ public sealed class RevivalGameplayConfig
 
         Downed ??= new DownedConfig();
         Self ??= StimReviveConfig.CreateSelfDefaults();
+        Redeploy ??= RedeployReviveConfig.CreateDefaults();
         Protection ??= new ProtectionConfig();
         Development ??= new DevelopmentGameplayConfig();
 
         Downed.Normalize();
         Self.Normalize();
+        Redeploy.Normalize();
         Protection.Normalize();
     }
 }
@@ -152,6 +157,32 @@ public sealed class StimReviveConfig : ReviveTypeConfig
     };
 }
 
+//====================[ RedeployReviveConfig ]====================
+// Redeploy: no item requirement, the cost is lives. HoldSeconds is the key hold; there is no progress phase afterwards.
+public sealed class RedeployReviveConfig : ReviveTypeConfig
+{
+    // A fresh start: full health, clean wounds, a short grace period instead of a cooldown.
+    public static RedeployReviveConfig CreateDefaults() => new()
+    {
+        Enabled = false,
+        HoldSeconds = 3f,
+        LivesCost = 1,
+        RestoreBodyParts = true,
+        RestorePercent = BodyRestorePercentConfig.CreateFullDefaults(),
+        RemoveLightBleeds = true,
+        RemoveHeavyBleeds = true,
+        RemoveLegFractures = true,
+        RemoveArmFractures = true,
+        InvulnerabilityDurationSeconds = 10f,
+        InvulnerabilitySpeedPercent = 100f,
+        CooldownSeconds = 0f,
+        ApplyContusionOnRevive = false,
+        ContusionDurationSeconds = 0f,
+        ApplyPainOnRevive = false,
+        PainDurationSeconds = 0f
+    };
+}
+
 //====================[ BodyRestorePercentConfig ]====================
 public sealed class BodyRestorePercentConfig
 {
@@ -168,6 +199,15 @@ public sealed class BodyRestorePercentConfig
         Stomach = 35f,
         Arms = 35f,
         Legs = 35f
+    };
+
+    public static BodyRestorePercentConfig CreateFullDefaults() => new()
+    {
+        Head = 100f,
+        Chest = 100f,
+        Stomach = 100f,
+        Arms = 100f,
+        Legs = 100f
     };
 
     public void Normalize()

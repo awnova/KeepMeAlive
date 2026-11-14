@@ -16,6 +16,8 @@ public class RevivalStateStaticRouter(RevivalStateCallbacks callbacks, JsonUtil 
             async (url, info, sessionId, output, cancellationToken) => await callbacks.BeginCritical(url, info, sessionId)),
         new RouteAction<RevivalAuthorityRequest>("/keepmealive/state/request-revive-start",
             async (url, info, sessionId, output, cancellationToken) => await callbacks.RequestReviveStart(url, info, sessionId)),
+        new RouteAction<RevivalAuthorityRequest>("/keepmealive/state/redeploy",
+            async (url, info, sessionId, output, cancellationToken) => await callbacks.Redeploy(url, info, sessionId)),
         new RouteAction<RevivalAuthorityRequest>("/keepmealive/state/cancel-revive-start",
             async (url, info, sessionId, output, cancellationToken) => await callbacks.CancelReviveStart(url, info, sessionId)),
         new RouteAction<RevivalAuthorityRequest>("/keepmealive/state/complete-revive",

@@ -14,6 +14,8 @@
   "Hud.Loot": "Loot",
   "Hud.Tap": "Tap",
   "Hud.GiveUp": "Give up",
+  "Hud.Redeploy": "Redeploy",
+  "Hud.Redeploying": "Redeploying",
   "Hud.Hold": "Hold",
   "Hud.WaitForTeammate": "Wait for teammate",
   "Hud.NeedsStim": "Needs stim",
@@ -74,6 +76,9 @@
   "Revive.Disabled": "This kind of revive is disabled",
   "Revive.MissingDefibCanceled": "Defib missing. Revive canceled.",
   "Revive.InventoryBusyCanceled": "Inventory busy. Revive canceled, try again.",
+
+  "Redeploy.NoSpawn": "No spawn point found to redeploy to",
+  "Redeploy.Failed": "Redeploy failed",
 
   "ReviveDenied.AuthorizationFailed": "Revive authorization failed",
   "ReviveDenied.TeamFallback": "Revive denied",

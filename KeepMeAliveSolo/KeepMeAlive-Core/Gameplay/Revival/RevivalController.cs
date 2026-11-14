@@ -145,6 +145,7 @@ namespace KeepMeAlive.Gameplay.Revival
         internal static void ApplyRevivingState(string playerId, RMPlayer playerState)
         {
             RMSession.SetPlayerState(playerId, RMState.Reviving);
+            playerState.ReviveRequestedSource = (int)ReviveSource.Self;
             playerState.ClearSelfReviveInput();
         }
 

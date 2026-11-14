@@ -11,6 +11,7 @@ namespace KeepMeAlive.Configuration
         // Key Bindings
         public static ConfigEntry<KeyCode> SELF_REVIVAL_KEY;
         public static ConfigEntry<KeyCode> GIVE_UP_KEY;
+        public static ConfigEntry<KeyCode> REDEPLOY_KEY;
 
         // Audio
         public static ConfigEntry<bool> ENABLE_TINNITUS_EFFECT;
@@ -34,6 +35,13 @@ namespace KeepMeAlive.Configuration
                 "Give Up Key",
                 KeyCode.Backspace,
                 "Press this key when in critical state to die immediately"
+            );
+
+            REDEPLOY_KEY = config.Bind(
+                "1. Key Bindings",
+                "Redeploy Key",
+                KeyCode.R,
+                "The key to press and hold to redeploy when in critical state"
             );
 
             //====================[ Audio ]====================

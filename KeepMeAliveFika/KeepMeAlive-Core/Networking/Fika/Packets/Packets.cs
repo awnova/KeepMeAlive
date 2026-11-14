@@ -1,4 +1,6 @@
 //====================[ Imports ]====================
+using EFT.InventoryLogic;
+using Fika.Core.Networking;
 using Fika.Core.Networking.LiteNetLib.Utils;
 
 namespace KeepMeAlive.Networking.Fika.Packets
@@ -467,6 +469,57 @@ namespace KeepMeAlive.Networking.Fika.Packets
         {
             writer.Put(draggerId ?? "");
             writer.Put(yaw);
+        }
+    }
+
+    //====================[ Redeploy ]====================
+    // The owner redeployed: left a corpse with the gear where the body lay, and came back at a spawn point. Every other
+    // peer builds the same corpse from the equipment (same item ids as the owner's, so looting it lines up), posed as its
+    // own copy of the body lies; the bones here are only the fallback for a peer whose copy cannot supply them.
+    public struct RedeployPacket : INetSerializable
+    {
+        public string playerId;
+        public int livesRemaining;
+        public float spawnX, spawnY, spawnZ;
+        public float yaw;
+        // False when no corpse was made (the player kept their gear).
+        public bool hasCorpse;
+        public Item equipment;
+        // Seven floats per bone: position, then rotation (x y z w).
+        public float[] bones;
+
+        public void Deserialize(NetDataReader reader)
+        {
+            playerId = reader.GetString();
+            livesRemaining = reader.GetInt();
+            spawnX = reader.GetFloat();
+            spawnY = reader.GetFloat();
+            spawnZ = reader.GetFloat();
+            yaw = reader.GetFloat();
+            hasCorpse = reader.GetBool();
+            if (!hasCorpse) return;
+
+            equipment = reader.GetItem();
+            int count = reader.GetInt();
+            bones = new float[count];
+            for (int i = 0; i < count; i++) bones[i] = reader.GetFloat();
+        }
+
+        public void Serialize(NetDataWriter writer)
+        {
+            writer.Put(playerId ?? "");
+            writer.Put(livesRemaining);
+            writer.Put(spawnX);
+            writer.Put(spawnY);
+            writer.Put(spawnZ);
+            writer.Put(yaw);
+            bool corpse = hasCorpse && equipment != null && bones != null;
+            writer.Put(corpse);
+            if (!corpse) return;
+
+            writer.PutItem(equipment);
+            writer.Put(bones.Length);
+            for (int i = 0; i < bones.Length; i++) writer.Put(bones[i]);
         }
     }
 }

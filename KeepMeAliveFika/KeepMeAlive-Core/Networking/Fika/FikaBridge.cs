@@ -204,6 +204,60 @@ namespace KeepMeAlive.Networking.Fika
             SendPacket(ref packet);
         }
 
+        // The redeploying owner tells everyone: the corpse (null when none was made), where the body lay, where they come back.
+        public static void SendRedeployPacket(string playerId, EFT.InventoryLogic.Item corpseEquipment, JsonType.TransformSync[] bones,
+            UnityEngine.Vector3 spawn, float yaw, int livesRemaining)
+        {
+            RevivalDebugLog.LogNetworkTrace($"Sending redeploy packet for {playerId} (corpse={corpseEquipment != null})");
+            RedeployPacket packet = new()
+            {
+                playerId = playerId,
+                livesRemaining = livesRemaining,
+                spawnX = spawn.x,
+                spawnY = spawn.y,
+                spawnZ = spawn.z,
+                yaw = yaw,
+                hasCorpse = corpseEquipment != null && bones != null,
+                equipment = corpseEquipment,
+                bones = BonesToFloats(bones)
+            };
+            SendPacket(ref packet);
+        }
+
+        private static float[] BonesToFloats(JsonType.TransformSync[] bones)
+        {
+            if (bones == null) return null;
+            var floats = new float[bones.Length * 7];
+            for (int i = 0; i < bones.Length; i++)
+            {
+                int o = i * 7;
+                floats[o] = bones[i].Position.x;
+                floats[o + 1] = bones[i].Position.y;
+                floats[o + 2] = bones[i].Position.z;
+                floats[o + 3] = bones[i].Rotation.x;
+                floats[o + 4] = bones[i].Rotation.y;
+                floats[o + 5] = bones[i].Rotation.z;
+                floats[o + 6] = bones[i].Rotation.w;
+            }
+            return floats;
+        }
+
+        public static JsonType.TransformSync[] FloatsToBones(float[] floats)
+        {
+            if (floats == null || floats.Length % 7 != 0) return null;
+            var bones = new JsonType.TransformSync[floats.Length / 7];
+            for (int i = 0; i < bones.Length; i++)
+            {
+                int o = i * 7;
+                bones[i] = new JsonType.TransformSync
+                {
+                    Position = new UnityEngine.Vector3(floats[o], floats[o + 1], floats[o + 2]),
+                    Rotation = new UnityEngine.Quaternion(floats[o + 3], floats[o + 4], floats[o + 5], floats[o + 6])
+                };
+            }
+            return bones;
+        }
+
         public static void SendPlayerStateResetPacket(string playerId, bool isDead, float cooldownSeconds = 0f)
         {
             RevivalDebugLog.LogNetworkTrace($"Sending state reset packet for {playerId} (isDead={isDead}, cooldown={cooldownSeconds:F0}s)");

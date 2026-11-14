@@ -17,6 +17,8 @@ namespace KeepMeAlive.Gameplay.Downed
             // Self-revive is off while spectating; the player returns to their body first.
             if (DownedSpectate.IsActive) return;
             if (!string.IsNullOrEmpty(st.CurrentReviverId) && st.CurrentReviverId != player.ProfileId) return;
+            // A redeploy hold or swap owns the key press.
+            if (st.IsRedeploying) return;
 
             // Hold completed and the server is authorizing: the attempt is committed. A new KeyDown
             // here would start a second attempt and abandon this one (after its item was consumed).

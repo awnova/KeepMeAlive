@@ -32,6 +32,10 @@ public class RevivalStateCallbacks(
             return RequireOwner(actor, owned) ?? stateService.TryStartRevive(info.PlayerId, info.ReviverId, info.Source);
         });
 
+    public ValueTask<string> Redeploy(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
+        Handle(url, info, sessionId, owned => RequireOwner(info.PlayerId, owned)
+            ?? stateService.TryRedeploy(info.PlayerId));
+
     public ValueTask<string> CancelReviveStart(string url, RevivalAuthorityRequest info, MongoId sessionId) =>
         Handle(url, info, sessionId, owned => stateService.CancelReviveStart(info.PlayerId, owned));
 

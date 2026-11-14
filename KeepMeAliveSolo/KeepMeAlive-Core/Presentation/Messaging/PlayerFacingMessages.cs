@@ -24,6 +24,8 @@ namespace KeepMeAlive.Presentation.Messaging
 
             public static string SelfRevive => T("Hud.SelfRevive");
             public static string GiveUp => T("Hud.GiveUp");
+            public static string Redeploy => T("Hud.Redeploy");
+            public static string Redeploying => T("Hud.Redeploying");
             public static string Hold => T("Hud.Hold");
             public static string NeedsStim => T("Hud.NeedsStim");
 
@@ -38,6 +40,13 @@ namespace KeepMeAlive.Presentation.Messaging
             public static string MissingStimCanceled => T("Revive.MissingStimCanceled");
             public static string Disabled => T("Revive.Disabled");
             public static string InventoryBusyCanceled => T("Revive.InventoryBusyCanceled");
+        }
+
+        //====================[ Redeploy ]====================
+        internal static class Redeploy
+        {
+            public static string NoSpawn => T("Redeploy.NoSpawn");
+            public static string Failed => T("Redeploy.Failed");
         }
 
         //====================[ Revive Denials ]====================

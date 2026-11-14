@@ -20,8 +20,10 @@ namespace KeepMeAlive.Presentation.HUD
     {
         //====================[ Types ]====================
         internal enum StatusKind { Bleeding, Reviving, Invulnerable }
-        internal enum HoldKind { SelfRevive, GiveUp }
+        internal enum HoldKind { SelfRevive, GiveUp, Redeploy }
         internal enum StripState { Hidden, Available, NoLives, NeedsStim, SelfReviveOff }
+        // The redeploy item on the downed player's strip; Hidden when redeploy is off.
+        internal enum RedeployStrip { Hidden, Available, NoLives }
 
         //====================[ Constants ]====================
         // The game's UI font. Bender's bold, italic and bold-italic SDF assets are marked "DON'T USE!", so bold is
@@ -60,6 +62,7 @@ namespace KeepMeAlive.Presentation.HUD
         internal static readonly Color GreyColor = Hex(0x9CA3AF);
         internal static readonly Color DimColor = Hex(0x4B5563);
         private static readonly Color Blue = Hex(0x5AA9FF);
+        private static readonly Color Amber = Hex(0xF5A524);
         private const string GoldTag = "#E5B358";
         private const string TextTag = "#E1DFD6";
         private const string GreyTag = "#9CA3AF";
@@ -89,6 +92,8 @@ namespace KeepMeAlive.Presentation.HUD
 
         private static StripState _stripState = StripState.Hidden;
         private static int _stripCost;
+        private static RedeployStrip _redeployStrip = RedeployStrip.Hidden;
+        private static int _redeployCost;
         private static bool _inputBlocked;
 
         // Last rendered text keys, so strings are only rebuilt when something visible changes.
@@ -173,6 +178,13 @@ namespace KeepMeAlive.Presentation.HUD
             _stripCost = cost;
         }
 
+        // The redeploy item next to self-revive on the downed player's strip.
+        internal static void SetRedeployStrip(RedeployStrip state, int cost = 0)
+        {
+            _redeployStrip = state;
+            _redeployCost = cost;
+        }
+
         // A key as the game's own prompts name it (Esc, BSpace, LShift...); mouse buttons come out in the game's language.
         // The game names None as nothing, so an unbound key keeps Unity's name.
         private static string KeyLabel(KeyCode key)
@@ -192,6 +204,7 @@ namespace KeepMeAlive.Presentation.HUD
         internal static void HideStrip()
         {
             _stripState = StripState.Hidden;
+            _redeployStrip = RedeployStrip.Hidden;
             _stripKey = null;
         }
 
@@ -391,7 +404,12 @@ namespace KeepMeAlive.Presentation.HUD
 
             var kind = _holdKind.Value;
             float remaining = _holdTimer != null ? Mathf.Max(0f, (float)_holdTimer.GetTimeSpan().TotalSeconds) : 0f;
-            Color color = kind == HoldKind.SelfRevive ? Blue : Red;
+            Color color = kind switch
+            {
+                HoldKind.SelfRevive => Blue,
+                HoldKind.Redeploy => Amber,
+                _ => Red
+            };
 
             _hold.SetActive(true);
 
@@ -403,9 +421,12 @@ namespace KeepMeAlive.Presentation.HUD
                 _holdKey = key;
                 _holdTick = tick;
 
-                string head = kind == HoldKind.SelfRevive
-                    ? PlayerFacingMessages.HudLabels.RevivingYourself
-                    : PlayerFacingMessages.HudLabels.GivingUp;
+                string head = kind switch
+                {
+                    HoldKind.SelfRevive => PlayerFacingMessages.HudLabels.RevivingYourself,
+                    HoldKind.Redeploy => PlayerFacingMessages.HudLabels.Redeploying,
+                    _ => PlayerFacingMessages.HudLabels.GivingUp
+                };
 
                 var sb = new System.Text.StringBuilder(120);
                 sb.Append("<color=").Append(ColorTag(color)).Append("><b>").Append(head).Append("</b></color>");
@@ -430,15 +451,16 @@ namespace KeepMeAlive.Presentation.HUD
 
             var selfKey = KeepMeAliveSettings.SELF_REVIVAL_KEY.Value;
             var giveUpKey = KeepMeAliveSettings.GIVE_UP_KEY.Value;
-            string key = $"{_stripState}|{_stripCost}|{selfKey}|{giveUpKey}";
+            var redeployKey = KeepMeAliveSettings.REDEPLOY_KEY.Value;
+            string key = $"{_stripState}|{_stripCost}|{_redeployStrip}|{_redeployCost}|{selfKey}|{giveUpKey}|{redeployKey}";
             if (key != _stripKey)
             {
                 _stripKey = key;
-                _strip.SetText(BuildStripText(selfKey, giveUpKey), true);
+                _strip.SetText(BuildStripText(selfKey, giveUpKey, redeployKey), true);
             }
         }
 
-        private static string BuildStripText(KeyCode selfKey, KeyCode giveUpKey)
+        private static string BuildStripText(KeyCode selfKey, KeyCode giveUpKey, KeyCode redeployKey)
         {
             var sb = new System.Text.StringBuilder(200);
 
@@ -446,6 +468,17 @@ namespace KeepMeAlive.Presentation.HUD
             {
                 StripItem(sb, true, selfKey, PlayerFacingMessages.HudLabels.SelfRevive);
                 StripChips(sb, _stripState, _stripCost);
+                sb.Append("<space=1.8em>");
+            }
+
+            // "Hold [key] Redeploy" with its life cost, or why it can't be done. Nothing when redeploy is off.
+            if (_redeployStrip != RedeployStrip.Hidden)
+            {
+                StripItem(sb, true, redeployKey, PlayerFacingMessages.HudLabels.Redeploy);
+                if (_redeployStrip == RedeployStrip.NoLives)
+                    Chip(sb, PlayerFacingMessages.HudLabels.NotEnoughLives, Red.ToHex());
+                else if (_redeployCost > 0)
+                    Chip(sb, PlayerFacingMessages.HudLabels.Cost(_redeployCost), GreyTag);
                 sb.Append("<space=1.8em>");
             }
 

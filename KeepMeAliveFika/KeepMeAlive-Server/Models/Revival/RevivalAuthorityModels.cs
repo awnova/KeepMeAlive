@@ -18,7 +18,8 @@ public enum RevivalSourceKind
 {
     Self = 0,
     Team = 1,
-    Defib = 2
+    Defib = 2,
+    Redeploy = 3
 }
 
 //====================[ RevivalAuthorityRequest ]====================
@@ -46,6 +47,8 @@ public record RevivalStateEntry
     public long LastUpdatedUnixSeconds { get; set; }
     public long CooldownUntilUnixSeconds { get; set; }
     public int LivesRemaining { get; set; }
+    // Lives the last redeploy actually took (the cost, clamped at what was left), so a refund gives back exactly that.
+    public int RedeployCharge { get; set; }
 }
 
 //====================[ RevivalAuthorityResponse ]====================

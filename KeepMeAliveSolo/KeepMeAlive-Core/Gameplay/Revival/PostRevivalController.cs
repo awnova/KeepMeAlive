@@ -48,7 +48,7 @@ namespace KeepMeAlive.Gameplay.Revival
             st.IsSelfReviving = false;
             st.GiveUpHoldTime = -1f;
 
-            st.InvulnerabilityTimer = PostReviveEffects.GetInvulnDuration(ReviveSource.Self);
+            st.InvulnerabilityTimer = PostReviveEffects.GetInvulnDuration((ReviveSource)st.ReviveRequestedSource);
 
             try { GhostMode.ExitGhostMode(player); }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[PostRevival] ExitGhostMode error: {ex.Message}"); }
@@ -63,7 +63,7 @@ namespace KeepMeAlive.Gameplay.Revival
 
             if (applyFinalize)
             {
-                try { PostReviveEffects.Apply(player, ReviveSource.Self); }
+                try { PostReviveEffects.Apply(player, (ReviveSource)st.ReviveRequestedSource); }
                 catch (Exception ex) { Plugin.LogSource.LogError($"[PostRevival] PostReviveEffects error: {ex.Message}"); }
             }
 
@@ -110,7 +110,7 @@ namespace KeepMeAlive.Gameplay.Revival
         {
             st.InvulnerabilityTimer = 0f;
 
-            float cd = PostReviveEffects.GetCooldownDuration(ReviveSource.Self);
+            float cd = PostReviveEffects.GetCooldownDuration((ReviveSource)st.ReviveRequestedSource);
             RMSession.SetPlayerState(player.ProfileId, RMState.CoolDown);
             st.CooldownTimer = cd;
 

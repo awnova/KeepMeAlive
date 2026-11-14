@@ -64,6 +64,21 @@ namespace KeepMeAlive.Gameplay.Revival
             }
         }
 
+        // The answer to a redeploy request: the server has already charged the lives when Allowed.
+        internal readonly struct RedeployResult
+        {
+            public readonly bool Allowed;
+            public readonly string Reason;
+            public readonly int LivesRemaining;
+
+            public RedeployResult(bool allowed, string reason, int livesRemaining)
+            {
+                Allowed = allowed;
+                Reason = reason ?? string.Empty;
+                LivesRemaining = livesRemaining;
+            }
+        }
+
         //====================[ Ordered Queue ]====================
         private static readonly object QueueLock = new();
         private static Task _queueTail = Task.CompletedTask;
@@ -103,6 +118,19 @@ namespace KeepMeAlive.Gameplay.Revival
                 return response == null
                     ? new AuthorizeResult(false, PlayerFacingMessages.ReviveDenied.AuthorizationFailed)
                     : new AuthorizeResult(response.Success, MapDenyReason(response));
+            });
+
+        // One call checks the rules and charges the lives (no progress phase, so no separate complete). Sent once, not
+        // retried: a charge whose answer got lost is rolled back to BleedingOut by the caller. Dropped at a raid boundary it
+        // comes back as default (not allowed); callers check the generation first.
+        public static Task<RedeployResult> RequestRedeployAsync(string playerId) =>
+            Enqueue(_ =>
+            {
+                var response = Send("redeploy", new AuthorityRequest { PlayerId = playerId });
+                if (response == null)
+                    return new RedeployResult(false, PlayerFacingMessages.ReviveDenied.AuthorizationFailed, 0);
+
+                return new RedeployResult(response.Success, MapDenyReason(response), response.State?.LivesRemaining ?? 0);
             });
 
         // Returns the post-revive lives count, or null if the server refused the completion or the raid ended first.

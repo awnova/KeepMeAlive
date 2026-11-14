@@ -5,11 +5,13 @@ using UnityEngine;
 namespace KeepMeAlive.Gameplay.Revival
 {
     //====================[ RevivePolicy ]====================
-    // Revive policy queries for Self revive.
+    // Revive policy queries for the Self revive and Redeploy.
     internal static class RevivePolicy
     {
         //====================[ Policy Queries ]====================
-        public static SyncedReviveTypeConfig For(ReviveSource _) => SyncedServerConfigStore.Config.Gameplay.Self;
+        public static SyncedReviveTypeConfig For(ReviveSource source) => source == ReviveSource.Redeploy
+            ? SyncedServerConfigStore.Config.Gameplay.Redeploy
+            : SyncedServerConfigStore.Config.Gameplay.Self;
 
         public static bool IsEnabled(ReviveSource source) => For(source).Enabled;
 
@@ -28,7 +30,7 @@ namespace KeepMeAlive.Gameplay.Revival
         public enum RequiredItem { None, Stim }
 
         // Whether the player must carry a stim.
-        public static bool RequireStim(ReviveSource source) => For(source).RequireStim;
+        public static bool RequireStim(ReviveSource source) => source == ReviveSource.Self && For(source).RequireStim;
 
         public static float GetHoldDuration(ReviveSource source) => Mathf.Max(0.1f, For(source).HoldSeconds);
 
@@ -48,6 +50,22 @@ namespace KeepMeAlive.Gameplay.Revival
         {
             var config = For(source);
             return livesRemaining >= config.LivesCost || (config.AllowInsufficientLives && livesRemaining > 0);
+        }
+
+        private static readonly ReviveSource[] AllSources = { ReviveSource.Self, ReviveSource.Redeploy };
+
+        // Whether any enabled revive type (Self, Redeploy) could still be paid for with these lives. With every type
+        // disabled the lives can't decide anything, so this stays true and the downed state works as before.
+        public static bool HasLivesForAnyRevive(int livesRemaining)
+        {
+            bool anyEnabled = false;
+            foreach (var source in AllSources)
+            {
+                if (!IsEnabled(source)) continue;
+                anyEnabled = true;
+                if (HasLivesFor(source, livesRemaining)) return true;
+            }
+            return !anyEnabled;
         }
 
         // The lives this revive actually takes, for the HUD: the cost, capped at what is left.
