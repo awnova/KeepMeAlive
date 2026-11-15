@@ -18,7 +18,7 @@ namespace KeepMeAlive
     [BepInDependency("me.sol.sain", BepInDependency.DependencyFlags.SoftDependency)]
     // Same for TraumaCore: DeathMode needs to know it is loaded (it never lets a shot take the head below 1 HP).
     [BepInDependency(Plugin.TraumaCoreGuid, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInPlugin(Plugin.PluginGuid, "KeepMeAlive", "1.1.0")]
+    [BepInPlugin(Plugin.PluginGuid, "KeepMeAlive", "1.2.0")]
     public class Plugin : BaseUnityPlugin
     {
         //====================[ Identity ]====================

@@ -147,6 +147,10 @@ namespace KeepMeAlive.Gameplay.Downed
         // Same sequence as the initial force; the Prone() call is skipped when already prone because it toggles.
         private static void ApplyPronePose(Player player, MovementContext mc)
         {
+            // Prone() is refused at a map gun; a snap there leaves IsInPronePose set inside the Stationary state.
+            // The guard retries once the state has left it (LeaveStationaryWeapon).
+            if (IsAtStationaryWeapon(mc)) return;
+
             try
             {
                 if (!mc.IsInPronePose) player.CurrentManagedState?.Prone();
@@ -399,8 +403,10 @@ namespace KeepMeAlive.Gameplay.Downed
             {
                 if (player == null || !player.IsYourPlayer) return;
 
-                CancelLocalManagedActions(player);
+                // Before the hands swap and prone: both are handled by the states these leave.
+                LeaveStationaryWeapon(player);
                 ExitWeaponPostures(player);
+                CancelLocalManagedActions(player);
 
                 ForceProne(player);
                 ForceEmptyHands(player);
@@ -410,16 +416,6 @@ namespace KeepMeAlive.Gameplay.Downed
                 if (mc == null) return;
 
                 mc.ReleaseDoorIfInteractingWithOne();
-
-                if (mc.StationaryWeapon != null)
-                {
-                    mc.StationaryWeapon.Unlock(player.ProfileId);
-                    if (player.HandsController != null && mc.StationaryWeapon.Item == player.HandsController.Item)
-                    {
-                        mc.StationaryWeapon.Show();
-                        player.ReleaseHand();
-                    }
-                }
 
                 if (player.IsYourPlayer && Plugin.StaticCoroutineRunner != null)
                 {
@@ -435,8 +431,8 @@ namespace KeepMeAlive.Gameplay.Downed
             if (player?.MovementContext == null) return;
             try
             {
-                // ReleaseHand (stationary weapon, ApplyRevivableState) unsubscribes the IK store for good, and the arm
-                // IK reads what it stores every frame.
+                // Re-subscribes the IK store (the arm IK reads it every frame) in case anything unhooked it while
+                // downed; earlier builds did, through ReleaseHand. Idempotent: it detaches first.
                 PlayerHooks.AttachWeaponAnimation(player);
             }
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] Re-hook movement events error: {ex.Message}"); }
@@ -463,11 +459,14 @@ namespace KeepMeAlive.Gameplay.Downed
 
             try
             {
-                bool hasOverride = !ReferenceEquals(player.CurrentManagedState, player.CurrentState);
                 player.CurrentManagedState?.Cancel();
-                if (hasOverride)
+                // Pickup/plant/examine (MovementContext.OverrideState). CurrentManagedState differs from CurrentState
+                // only on a bipod/wall mount (OverridenControlsState), which ExitMountedState ends; leaving the
+                // "override" there re-entered PreviousState without the animator.
+                var mc = player.MovementContext;
+                if (mc?.OverridenState != null && ReferenceEquals(mc.OverridenState, mc.CurrentState))
                 {
-                    player.MovementContext?.ExitOverridenState();
+                    mc.ExitOverridenState();
                 }
             }
             catch (Exception ex)
@@ -507,6 +506,97 @@ namespace KeepMeAlive.Gameplay.Downed
             catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] SetBlindFire(0) failed: {ex.Message}"); }
         }
 
+        //====================[ Stationary Weapon ]====================
+        // A map gun (Utes, AGS) is left the game's way, never through its death cleanup (Player.OnDead: Unlock,
+        // Show, ReleaseHand), which nulls the hands field without the change event, so StationaryPlayerState
+        // never exits and its rotation limits, StationaryWeapon and camera strategy outlive the revive.
+        // 1. The forced drop (Denied; Fika sends it to the peers): animator Stationary off, lock released.
+        // 2. ForceEmptyHands: the controller change shows the map gun and resets the rotation function.
+        // 3. The animator leaves Stationary: Exit resets the limits and nulls StationaryWeapon; the state-change
+        //    handler restores the camera strategy. Prone waits for this (refused while StationaryWeapon is set).
+        // Denied, not Leave: Leave arms the primary (SetInHands), and peers ignore it until a hands packet.
+        private const float StationaryExitTimeout = 3f;
+        private static Coroutine _stationaryExitRoutine;
+
+        // The game's own gate (MovementState.Prone). StationaryPlayerState.Exit is what nulls it, so it also tells
+        // when the state has gone.
+        private static bool IsAtStationaryWeapon(MovementContext mc) => mc.StationaryWeapon != null;
+
+        private static void LeaveStationaryWeapon(Player player)
+        {
+            var mc = player.MovementContext;
+            if (mc?.StationaryWeapon == null) return;
+
+            try
+            {
+                var stage = (mc.CurrentState as StationaryPlayerState)?.Stage;
+                if (stage == StationaryPlayerState.EStationaryStage.Main)
+                {
+                    // As the interact key does: Out also stops the hands-changing hook from sending a Leave.
+                    ((StationaryPlayerState)mc.CurrentState).Stage = StationaryPlayerState.EStationaryStage.Out;
+                }
+                else if (stage == StationaryPlayerState.EStationaryStage.In)
+                {
+                    // Enter locks the inventory and only Spawned (the gun reaching the hands) unlocks it.
+                    mc.StateLocksInventory = false;
+                }
+
+                mc.DropStationary(StationaryWeaponPacket.EStationaryCommand.Denied);
+                Plugin.LogSource.LogInfo($"[DownedMovement] Leaving stationary weapon {mc.StationaryWeapon?.Id} (state {mc.CurrentState?.Name}, stage {stage?.ToString() ?? "none"})");
+            }
+            catch (Exception ex) { Plugin.LogSource.LogWarning($"[DownedMovement] Stationary drop failed: {ex.Message}"); }
+
+            if (Plugin.StaticCoroutineRunner == null) return;
+            if (_stationaryExitRoutine != null) Plugin.StaticCoroutineRunner.StopCoroutine(_stationaryExitRoutine);
+            _stationaryExitRoutine = Plugin.StaticCoroutineRunner.StartCoroutine(AwaitStationaryExit(player, mc));
+        }
+
+        private static IEnumerator AwaitStationaryExit(Player player, MovementContext mc)
+        {
+            float deadline = Time.time + StationaryExitTimeout;
+            while (player != null && player.MovementContext == mc && IsAtStationaryWeapon(mc) && Time.time < deadline)
+            {
+                RevivalDebugLog.LogDebug($"[DownedMovement] Stationary exit: state {mc.CurrentState?.Name}, stage {(mc.CurrentState as StationaryPlayerState)?.Stage.ToString() ?? "none"}, hands {player.HandsController?.Item?.ShortName ?? "none"}, body animator {player.BodyAnimatorCommon?.enabled}");
+                yield return null;
+            }
+            _stationaryExitRoutine = null;
+
+            if (player == null || player.MovementContext != mc || !PlayerUtils.IsAlive(player)) yield break;
+
+            if (IsAtStationaryWeapon(mc))
+            {
+                ForceStationaryCleanup(player, mc);
+            }
+            else
+            {
+                RevivalDebugLog.LogDebug($"[DownedMovement] Stationary weapon left; state {mc.CurrentState?.Name}");
+            }
+
+            if (RMSession.IsPlayerCritical(player.ProfileId)) ForceProne(player);
+        }
+
+        // Last resort when the state has not exited in time: what StationaryPlayerState.Exit and its
+        // hands-changed handler would have reset.
+        private static void ForceStationaryCleanup(Player player, MovementContext mc)
+        {
+            var sw = mc.StationaryWeapon;
+            Plugin.LogSource.LogWarning($"[DownedMovement] Stationary exit timed out (state {mc.CurrentState?.Name}, weapon {sw?.Id ?? "none"}, hands {player.HandsController?.Item?.ShortName ?? "none"}); resetting it by hand");
+            try
+            {
+                mc.PlayerAnimatorSetStationary(false);
+                if (sw != null)
+                {
+                    if (player.HandsController?.Item != sw.Item) sw.Show();
+                    sw.Unlock(string.Empty);
+                }
+                mc.SetRotationLimit(Player.Constants.FULL_YAW_RANGE, Player.Constants.STAND_POSE_ROTATION_PITCH_RANGE);
+                mc.RotationAction = MovementContext.DefaultRotationFunction;
+                mc.StationaryWeapon = null;
+                player.ProceduralWeaponAnimation?.SetStrategy(player.PointOfView);
+            }
+            catch (Exception ex) { Plugin.LogSource.LogError($"[DownedMovement] Stationary cleanup error: {ex.Message}"); }
+        }
+
         private static IEnumerator ReassertProneNextFrame(Player player)
         {
             yield return null;
@@ -519,7 +609,7 @@ namespace KeepMeAlive.Gameplay.Downed
             try
             {
                 var mc = player.MovementContext;
-                if (!IsProne(mc)) SnapProne(mc);
+                if (!IsProne(mc) && !IsAtStationaryWeapon(mc)) SnapProne(mc);
             }
             catch (Exception ex)
             {
